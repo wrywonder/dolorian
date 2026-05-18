@@ -1,0 +1,106 @@
+import type { Post } from '@/types';
+import { ACTIVITY_IDS, PARENT_IDS, POST_IDS, VENUE_IDS } from './ids';
+
+/**
+ * 8 posts, all from connected parents (so they pass RLS for Drew).
+ * Mix of photo, question, and text. Two reference an activity (soccer)
+ * for the activity → post linkage test.
+ */
+export const mockPosts: Post[] = [
+  {
+    id: POST_IDS.maya_first_goal,
+    author_id: PARENT_IDS.maya,
+    type: 'photo',
+    body: 'first goal — pure magic',
+    media_path: 'mock://post-maya-first-goal',
+    activity_id: ACTIVITY_IDS.saturday_soccer,
+    story_id: null,
+    location_share_mode: '30min',
+    venue_id: VENUE_IDS.cesar_chavez,
+    created_at: '2026-05-24T17:38:00Z', // "22m ago" relative to ~17:00 today
+  },
+  {
+    id: POST_IDS.jordan_tumbling,
+    author_id: PARENT_IDS.jordan,
+    type: 'question',
+    body: 'Anyone tried toddler tumbling at Studio Grow? Felix (3) is climbing things.',
+    media_path: null,
+    activity_id: null,
+    story_id: null,
+    location_share_mode: 'none',
+    venue_id: null,
+    created_at: '2026-05-24T17:00:00Z', // "1h ago"
+  },
+  {
+    id: POST_IDS.priya_ballet_pickup,
+    author_id: PARENT_IDS.priya,
+    type: 'photo',
+    body: 'aiden absolutely nailed his swim test today',
+    media_path: 'mock://post-priya-swim',
+    activity_id: null,
+    story_id: null,
+    location_share_mode: 'until_leave',
+    venue_id: VENUE_IDS.albany_aquatic,
+    created_at: '2026-05-24T16:00:00Z',
+  },
+  {
+    id: POST_IDS.sam_sunday_hike_q,
+    author_id: PARENT_IDS.sam,
+    type: 'text',
+    body: "anyone in for a sunday hike at tilden tomorrow? kai's bringing the trail mix.",
+    media_path: null,
+    activity_id: null,
+    story_id: null,
+    location_share_mode: 'none',
+    venue_id: null,
+    created_at: '2026-05-24T14:30:00Z',
+  },
+  {
+    id: POST_IDS.maya_carpool_q,
+    author_id: PARENT_IDS.maya,
+    type: 'question',
+    body: 'saturday soccer carpool from the north side? theo + i can fit two more',
+    media_path: null,
+    activity_id: ACTIVITY_IDS.saturday_soccer,
+    story_id: null,
+    location_share_mode: 'none',
+    venue_id: null,
+    created_at: '2026-05-23T22:00:00Z',
+  },
+  {
+    id: POST_IDS.jordan_felix_park,
+    author_id: PARENT_IDS.jordan,
+    type: 'photo',
+    body: 'felix learned to swing today and we are NEVER LEAVING',
+    media_path: 'mock://post-jordan-felix',
+    activity_id: null,
+    story_id: null,
+    location_share_mode: '30min',
+    venue_id: VENUE_IDS.cesar_chavez,
+    created_at: '2026-05-23T17:00:00Z',
+  },
+  {
+    id: POST_IDS.priya_swim_class,
+    author_id: PARENT_IDS.priya,
+    type: 'photo',
+    body: 'zoe nailed the back float',
+    media_path: 'mock://post-priya-zoe',
+    activity_id: null,
+    story_id: null,
+    location_share_mode: 'until_leave',
+    venue_id: VENUE_IDS.albany_aquatic,
+    created_at: '2026-05-22T18:00:00Z',
+  },
+  {
+    id: POST_IDS.sam_kai_recital,
+    author_id: PARENT_IDS.sam,
+    type: 'photo',
+    body: "kai's piano recital — he didn't miss a single note",
+    media_path: 'mock://post-sam-kai',
+    activity_id: null,
+    story_id: null,
+    location_share_mode: 'none',
+    venue_id: null,
+    created_at: '2026-05-21T01:00:00Z',
+  },
+];
