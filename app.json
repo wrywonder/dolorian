@@ -15,7 +15,8 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.dolorian.app"
+      "bundleIdentifier": "com.dolorian.app",
+      "deploymentTarget": "17.0"
     },
     "android": {
       "adaptiveIcon": {
