@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { useFonts } from 'expo-font';
 import {
   InstrumentSerif_400Regular,
@@ -15,11 +16,12 @@ import {
   SpaceGrotesk_700Bold,
 } from '@expo-google-fonts/space-grotesk';
 import * as SplashScreen from 'expo-splash-screen';
-import { Stack } from 'expo-router';
-import { useEffect } from 'react';
+import { Stack, router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import type { Session } from '@supabase/supabase-js';
+import { supabase } from '@/lib/supabase';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -36,15 +38,30 @@ export default function RootLayout() {
     SpaceGrotesk_700Bold,
   });
 
-  useEffect(() => {
-    if (fontsLoaded || fontError) {
-      SplashScreen.hideAsync();
-    }
-  }, [fontsLoaded, fontError]);
+  const [session, setSession] = useState<Session | null | undefined>(undefined);
 
-  if (!fontsLoaded && !fontError) {
-    return null;
-  }
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => setSession(data.session));
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
+      setSession(s);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const ready = (fontsLoaded || fontError) && session !== undefined;
+
+  useEffect(() => {
+    if (!ready) return;
+    SplashScreen.hideAsync();
+
+    if (!session) {
+      router.replace('/(auth)/sign-in');
+    } else {
+      router.replace('/(tabs)/buzz');
+    }
+  }, [ready, session]);
+
+  if (!ready) return null;
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
