@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState } from 'react';
 import { useFonts } from 'expo-font';
 import {
   InstrumentSerif_400Regular,
@@ -16,7 +16,7 @@ import {
   SpaceGrotesk_700Bold,
 } from '@expo-google-fonts/space-grotesk';
 import * as SplashScreen from 'expo-splash-screen';
-import { Stack, router } from 'expo-router';
+import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -24,6 +24,12 @@ import type { Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 
 SplashScreen.preventAutoHideAsync();
+
+/** Shared auth context so index.tsx (and other screens) can read session state. */
+const AuthContext = createContext<{ session: Session | null | undefined }>({
+  session: undefined,
+});
+export const useSession = () => useContext(AuthContext);
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
@@ -51,24 +57,19 @@ export default function RootLayout() {
   const ready = (fontsLoaded || fontError) && session !== undefined;
 
   useEffect(() => {
-    if (!ready) return;
-    SplashScreen.hideAsync();
-
-    if (!session) {
-      router.replace('/(auth)/sign-in');
-    } else {
-      router.replace('/(tabs)/buzz');
-    }
-  }, [ready, session]);
+    if (ready) SplashScreen.hideAsync();
+  }, [ready]);
 
   if (!ready) return null;
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaProvider>
-        <Stack screenOptions={{ headerShown: false }} />
-        <StatusBar style="dark" />
-      </SafeAreaProvider>
-    </GestureHandlerRootView>
+    <AuthContext.Provider value={{ session }}>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <SafeAreaProvider>
+          <Stack screenOptions={{ headerShown: false }} />
+          <StatusBar style="dark" />
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    </AuthContext.Provider>
   );
 }
