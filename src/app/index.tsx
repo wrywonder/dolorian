@@ -1,9 +1,4 @@
-/**
- * Root route — redirects to the Buzz tab. Phase 7 adds an auth check
- * that redirects unauthenticated users to /auth/sign-in instead.
- */
-import { Redirect } from 'expo-router';
-
+// Root route — the root layout handles auth-aware redirect.
 export default function Index() {
-  return <Redirect href="/(tabs)/buzz" />;
+  return null;
 }
