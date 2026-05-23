@@ -47,9 +47,15 @@ export default function RootLayout() {
   const [session, setSession] = useState<Session | null | undefined>(undefined);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => setSession(data.session));
+    // Subscribe first so we don't miss events.
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
       setSession(s);
+    });
+    // Also call getSession() explicitly so that if onAuthStateChange doesn't
+    // fire an INITIAL_SESSION event we still resolve session state.
+    supabase.auth.getSession().then(({ data }) => {
+      // Only apply if onAuthStateChange hasn't already resolved session.
+      setSession((prev) => (prev === undefined ? data.session ?? null : prev));
     });
     return () => subscription.unsubscribe();
   }, []);

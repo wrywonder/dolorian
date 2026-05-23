@@ -1,31 +1,15 @@
-import { useEffect, useState } from 'react';
 import { Redirect } from 'expo-router';
-import type { Session } from '@supabase/supabase-js';
-import { supabase } from '@/lib/supabase';
+import { useSession } from './_layout';
 
 /**
  * Root route — redirects to (auth) or (tabs) based on session state.
  *
- * We use <Redirect> (declarative) instead of router.replace() (imperative)
- * because expo-router guarantees the Redirect component fires after the
- * navigator is fully mounted, avoiding the race condition where
- * router.replace() is called before screens are registered.
+ * Session is already resolved by the root layout (which returns null until
+ * fonts + session are ready), so we can read from AuthContext synchronously
+ * here — no extra getSession() call, no race condition.
  */
 export default function Index() {
-  const [session, setSession] = useState<Session | null | undefined>(undefined);
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => setSession(data.session));
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, s) => {
-      setSession(s);
-    });
-    return () => subscription.unsubscribe();
-  }, []);
-
-  // While loading auth state, render nothing (splash screen is still visible).
-  if (session === undefined) return null;
+  const { session } = useSession();
 
   if (session) {
     return <Redirect href="/(tabs)/buzz" />;
