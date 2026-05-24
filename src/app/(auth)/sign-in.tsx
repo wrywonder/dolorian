@@ -82,7 +82,7 @@ export default function SignInScreen() {
             <Text style={{ fontFamily: fonts.serif, fontSize: 16, color: colors.brownMid, marginTop: 12, lineHeight: 22 }}>
               {step === 'email'
                 ? 'your village is waiting.'
-                : `check ${email} for a 6-digit code`}
+                : `check ${email} for your login code`}
             </Text>
           </View>
 
@@ -115,7 +115,7 @@ export default function SignInScreen() {
               {loading ? (
                 <ActivityIndicator color={colors.terracotta} />
               ) : (
-                <TerracottaButton label="send magic link →" onPress={sendOtp} style={{ marginTop: 8 }} />
+                <TerracottaButton label="send login code →" onPress={sendOtp} style={{ marginTop: 8 }} />
               )}
             </View>
           ) : (
@@ -123,16 +123,16 @@ export default function SignInScreen() {
               <TextInput
                 value={otp}
                 onChangeText={setOtp}
-                placeholder="6-digit code"
+                placeholder="paste code from email"
                 placeholderTextColor={colors.taupe}
-                keyboardType="number-pad"
-                maxLength={6}
+                autoCapitalize="none"
+                autoCorrect={false}
                 autoFocus
                 style={{
                   fontFamily: fonts.monoBold,
-                  fontSize: 28,
+                  fontSize: 16,
                   color: colors.dark,
-                  letterSpacing: 4,
+                  letterSpacing: 1,
                   borderBottomWidth: 1.5,
                   borderBottomColor: colors.rule,
                   paddingVertical: 10,
