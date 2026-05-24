@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { RefreshControl, View } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { router } from 'expo-router';
 import { colors } from '@/lib/constants';
 import { data } from '@/lib/data';
 import { eyebrowDate } from '@/lib/format';
@@ -132,7 +133,7 @@ export default function BuzzScreen() {
         style={{ position: 'absolute', right: 22, bottom: 116 }}
         pointerEvents="box-none"
       >
-        <FloatingCompose onPress={() => {}} />
+        <FloatingCompose onPress={() => router.push('/compose' as never)} />
       </View>
     </SafeAreaView>
   );
