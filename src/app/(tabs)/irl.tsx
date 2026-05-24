@@ -7,17 +7,13 @@ import { EmptyState, ScreenHeader, Skeleton, VisibilityChip } from '@/components
 import { IllustratedMap } from '@/components/irl/IllustratedMap';
 import { WarmingUpStrip } from '@/components/irl/WarmingUpStrip';
 import { useVisibilityStore } from '@/store/visibility';
-import { CURRENT_PARENT_ID } from '@/mocks/ids';
+import { useCurrentParentId } from '@/hooks/useCurrentParentId';
 import type { NearbyParent, Parent, Venue } from '@/types';
 
-/**
- * IRL — connected parents on a stylized map plus a "warming up" rail
- * of venues with active families. Visibility chip is interactive and
- * shares state with Buzz via the visibility zustand slice.
- */
 export default function IrlScreen() {
   const visible = useVisibilityStore((s) => s.visible);
   const toggle = useVisibilityStore((s) => s.toggle);
+  const myId = useCurrentParentId();
 
   const [loading, setLoading] = useState(true);
   const [pins, setPins] = useState<NearbyParent[]>([]);
@@ -41,15 +37,11 @@ export default function IrlScreen() {
     load(true);
   }, [load, visible]);
 
-  // Filter out my own pin from the map if I've toggled off visibility.
-  const mapPins = pins.filter((p) => visible || p.parent.id !== CURRENT_PARENT_ID);
-  const otherPins = mapPins.filter((p) => p.parent.id !== CURRENT_PARENT_ID);
+  const mapPins = pins.filter((p) => visible || p.parent.id !== myId);
+  const otherPins = mapPins.filter((p) => p.parent.id !== myId);
 
   return (
-    <SafeAreaView
-      style={{ flex: 1, backgroundColor: colors.cream }}
-      edges={['top']}
-    >
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.cream }} edges={['top']}>
       <ScreenHeader
         eyebrow="YOUR VILLAGE, RIGHT NOW"
         title="IRL"
@@ -84,12 +76,11 @@ export default function IrlScreen() {
           flourish="sparkle"
         />
       ) : (
-        <IllustratedMap pins={mapPins} meId={CURRENT_PARENT_ID} />
+        <IllustratedMap pins={mapPins} meId={myId ?? ''} />
       )}
 
       <WarmingUpStrip items={warmingUp} />
 
-      {/* leave room for the floating tab bar */}
       <View style={{ height: 116 }} />
     </SafeAreaView>
   );

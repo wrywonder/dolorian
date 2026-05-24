@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { colors } from '@/lib/constants';
 import { data } from '@/lib/data';
-import { CURRENT_PARENT_ID } from '@/mocks/ids';
+import { useCurrentParentId } from '@/hooks/useCurrentParentId';
 import type { ProfileView, UUID } from '@/types';
 import { ActivityChipsRow } from './ActivityChipsRow';
 import { ConnectCTA } from './ConnectCTA';
@@ -15,11 +15,8 @@ type ProfileBodyProps = {
   onSettings?: () => void;
 };
 
-/**
- * Shared profile renderer used by both the You tab (own profile) and
- * the /profile/[id] route (viewing another parent).
- */
 export function ProfileBody({ parentId, onSettings }: ProfileBodyProps) {
+  const myId = useCurrentParentId();
   const [view, setView] = useState<ProfileView | null>(null);
 
   const load = useCallback(async () => {
@@ -33,11 +30,8 @@ export function ProfileBody({ parentId, onSettings }: ProfileBodyProps) {
 
   if (!view) return <View style={{ flex: 1, backgroundColor: colors.cream }} />;
 
-  const isSelf = parentId === CURRENT_PARENT_ID;
+  const isSelf = myId === parentId;
   const status = view.connectionStatus;
-  // In Phase 7 we'll query the actual `initiated_by` on the connection row.
-  // For now, mocks only allow Drew to initiate from this screen, so any
-  // pending row we see was initiated by us.
   const pendingInitiatedByMe = status === 'pending';
 
   return (
@@ -48,7 +42,7 @@ export function ProfileBody({ parentId, onSettings }: ProfileBodyProps) {
       >
         <ProfileHeader
           parent={view.parent}
-          mutualFriendCount={view.mutualFriendCount || (isSelf ? 0 : 8)}
+          mutualFriendCount={view.mutualFriendCount}
           connectionStatus={status}
           isSelf={isSelf}
           onSettingsPress={onSettings}

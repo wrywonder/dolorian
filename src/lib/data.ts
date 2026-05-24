@@ -1,24 +1,12 @@
 /**
  * Single data-access interface. All screens import from here.
  *
- * Phase 2: mock-backed. Phase 7: swaps internals to live Supabase queries
- * without changing any callsite. Every method is async even when the mock
- * impl is sync — that way the boundary is already correct.
+ * Phase 7: live Supabase queries. Every method is async. RLS handles
+ * most visibility filtering — the current user's parent_id is resolved
+ * from the auth session and cached per sign-in.
  */
 
-import {
-  CURRENT_PARENT_ID,
-  mockActivities,
-  mockActivityInteractions,
-  mockCalendarEvents,
-  mockConnections,
-  mockKids,
-  mockParentLocations,
-  mockParents,
-  mockPosts,
-  mockPrompts,
-  mockVenues,
-} from '@/mocks';
+import { supabase } from '@/lib/supabase';
 import type {
   Activity,
   ActivityInteraction,
@@ -40,399 +28,465 @@ import type {
   Venue,
 } from '@/types';
 
-// ─────── internal helpers ───────
+// ─────── current user identity (cached) ───────
 
-function parentById(id: UUID): Parent | null {
-  return mockParents.find((p) => p.id === id) ?? null;
+let _cachedParentId: UUID | null = null;
+
+async function getCurrentParentId(): Promise<UUID> {
+  if (_cachedParentId) return _cachedParentId;
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not authenticated');
+  const { data, error } = await supabase
+    .from('parents')
+    .select('id')
+    .eq('auth_user_id', user.id)
+    .single();
+  if (error || !data) throw new Error('Parent profile not found');
+  _cachedParentId = data.id as UUID;
+  return _cachedParentId!;
 }
 
-function venueById(id: UUID | null): Venue | null {
-  if (!id) return null;
-  return mockVenues.find((v) => v.id === id) ?? null;
-}
-
-function activityById(id: UUID | null): Activity | null {
-  if (!id) return null;
-  return mockActivities.find((a) => a.id === id) ?? null;
-}
-
-/** Connected-parent ids for the given user (status = 'connected' only). */
-function connectedParentIds(userId: UUID): Set<UUID> {
-  const ids = new Set<UUID>();
-  for (const c of mockConnections) {
-    if (c.status !== 'connected') continue;
-    if (c.parent_a === userId) ids.add(c.parent_b);
-    else if (c.parent_b === userId) ids.add(c.parent_a);
-  }
-  return ids;
-}
+supabase.auth.onAuthStateChange(() => { _cachedParentId = null; });
 
 // ─────── current user ───────
 
 async function getCurrentUser(): Promise<Parent> {
-  const me = parentById(CURRENT_PARENT_ID);
-  if (!me) throw new Error('Current user not found in mocks');
-  return me;
+  const id = await getCurrentParentId();
+  const { data, error } = await supabase
+    .from('parents')
+    .select('*')
+    .eq('id', id)
+    .single();
+  if (error || !data) throw new Error('Current user not found');
+  return data as Parent;
 }
 
 // ─────── feed (Buzz tab) ───────
 
-/**
- * "Posts visible to me in the Buzz feed" — author is me OR a connected parent.
- * Returns newest first, with author/activity/venue eagerly joined.
- */
 async function getFeedPosts(): Promise<FeedItem[]> {
-  const me = CURRENT_PARENT_ID;
-  const connected = connectedParentIds(me);
+  const { data: posts, error } = await supabase
+    .from('posts')
+    .select('*, author:parents!author_id(*), activity:activities(*), venue:venues(*)')
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return (posts ?? []).map((row: Record<string, unknown>) => ({
+    post: extractPost(row),
+    author: row.author as Parent,
+    activity: (row.activity as Activity) ?? null,
+    venue: (row.venue as Venue) ?? null,
+  }));
+}
 
-  return mockPosts
-    .filter((p) => p.author_id === me || connected.has(p.author_id))
-    .sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
-    .map((post) => {
-      const author = parentById(post.author_id);
-      if (!author) throw new Error(`Post ${post.id} has unknown author`);
-      return {
-        post,
-        author,
-        activity: activityById(post.activity_id),
-        venue: venueById(post.venue_id),
-      };
-    });
+function extractPost(row: Record<string, unknown>): Post {
+  return {
+    id: row.id as string,
+    author_id: row.author_id as string,
+    type: row.type as Post['type'],
+    body: (row.body as string) ?? null,
+    media_path: (row.media_path as string) ?? null,
+    activity_id: (row.activity_id as string) ?? null,
+    story_id: (row.story_id as string) ?? null,
+    location_share_mode: row.location_share_mode as Post['location_share_mode'],
+    venue_id: (row.venue_id as string) ?? null,
+    created_at: row.created_at as string,
+  };
 }
 
 // ─────── prompts (Buzz prompt card slot) ───────
 
 async function getPendingPrompt(): Promise<ResolvedPrompt | null> {
-  const me = CURRENT_PARENT_ID;
-  const pending = mockPrompts
-    .filter((p) => p.parent_id === me && p.state === 'pending')
-    .sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
-  const prompt = pending[0];
-  if (!prompt) return null;
+  const { data: prompts, error } = await supabase
+    .from('prompts')
+    .select('*')
+    .eq('state', 'pending')
+    .order('created_at', { ascending: false })
+    .limit(1);
+  if (error || !prompts || prompts.length === 0) return null;
 
+  const prompt = prompts[0] as Prompt;
   return resolvePrompt(prompt);
 }
 
-function resolvePrompt<T extends PromptType>(prompt: Prompt<T>): ResolvedPrompt<T> {
-  // The payload type is narrowed by T, so we can read fields safely per branch.
-  switch (prompt.prompt_type) {
-    case 'share_after_activity': {
-      const p = prompt as Prompt<'share_after_activity'>;
-      const activity = activityById(p.payload.activity_id);
-      return {
-        prompt,
-        activity,
-        venue: venueById(activity?.venue_id ?? null),
-      };
+async function resolvePrompt<T extends PromptType>(prompt: Prompt<T>): Promise<ResolvedPrompt<T>> {
+  const payload = prompt.payload as Record<string, unknown>;
+  const activityId = payload.activity_id as string | undefined;
+
+  let activity: Activity | null = null;
+  let venue: Venue | null = null;
+  let signalFrom: Parent | null = null;
+
+  if (activityId) {
+    const { data } = await supabase.from('activities').select('*').eq('id', activityId).single();
+    activity = (data as Activity) ?? null;
+    if (activity?.venue_id) {
+      const { data: v } = await supabase.from('venues').select('*').eq('id', activity.venue_id).single();
+      venue = (v as Venue) ?? null;
     }
-    case 'rsvp_from_friend_signal': {
-      const p = prompt as Prompt<'rsvp_from_friend_signal'>;
-      const activity = activityById(p.payload.activity_id);
-      return {
-        prompt,
-        activity,
-        venue: venueById(activity?.venue_id ?? null),
-        signalFrom: parentById(p.payload.signal_from),
-      };
-    }
-    case 'confirm_calendar_import': {
-      const p = prompt as Prompt<'confirm_calendar_import'>;
-      const activity = activityById(p.payload.activity_id);
-      return {
-        prompt,
-        activity,
-        venue: venueById(activity?.venue_id ?? null),
-      };
-    }
-    case 'finalize_weekend_story':
-      return { prompt };
   }
+
+  if (prompt.prompt_type === 'rsvp_from_friend_signal') {
+    const signalId = payload.signal_from as string | undefined;
+    if (signalId) {
+      const { data } = await supabase.from('parents').select('*').eq('id', signalId).single();
+      signalFrom = (data as Parent) ?? null;
+    }
+  }
+
+  return { prompt, activity, venue, signalFrom };
 }
 
 async function markPromptActed(promptId: UUID): Promise<void> {
-  const p = mockPrompts.find((x) => x.id === promptId);
-  if (p) p.state = 'acted';
+  await supabase.from('prompts').update({ state: 'acted' }).eq('id', promptId);
 }
 
 async function dismissPrompt(promptId: UUID): Promise<void> {
-  const p = mockPrompts.find((x) => x.id === promptId);
-  if (p) p.state = 'dismissed';
+  await supabase.from('prompts').update({ state: 'dismissed' }).eq('id', promptId);
 }
 
 // ─────── activities (Plans tab) ───────
 
-/**
- * "Activities this week, with my friends' interest + RSVP counts."
- * Returns published activities sorted by starts_at ascending, with
- * connected-parent interaction stacks split into interested vs going.
- */
 async function getUpcomingActivities(): Promise<ActivitySocialProof[]> {
-  const me = CURRENT_PARENT_ID;
-  const connected = connectedParentIds(me);
+  const me = await getCurrentParentId();
 
-  return mockActivities
-    .filter((a) => a.published)
-    .sort((a, b) => {
-      if (!a.starts_at) return 1;
-      if (!b.starts_at) return -1;
-      return a.starts_at < b.starts_at ? -1 : 1;
-    })
-    .map((activity) => buildSocialProof(activity, connected, me));
+  const { data: activities, error } = await supabase
+    .from('activities')
+    .select('*, venue:venues(*)')
+    .eq('published', true)
+    .order('starts_at', { ascending: true });
+  if (error || !activities) return [];
+
+  const activityIds = activities.map((a: Record<string, unknown>) => a.id as string);
+  if (activityIds.length === 0) return [];
+
+  const { data: interactions } = await supabase
+    .from('activity_interactions')
+    .select('*, parent:parents(*)')
+    .in('activity_id', activityIds);
+
+  return activities.map((row: Record<string, unknown>) =>
+    buildSocialProof(row, interactions ?? [], me),
+  );
 }
 
-/** AI-discovered activities awaiting user confirmation. */
 async function getDiscoveredActivityPreviews(): Promise<ActivitySocialProof[]> {
-  const me = CURRENT_PARENT_ID;
-  const connected = connectedParentIds(me);
-  return mockActivities
-    .filter((a) => !a.published && a.source === 'ai_discovered')
-    .map((activity) => buildSocialProof(activity, connected, me));
+  const me = await getCurrentParentId();
+
+  const { data: activities, error } = await supabase
+    .from('activities')
+    .select('*, venue:venues(*)')
+    .eq('published', false)
+    .eq('source', 'ai_discovered');
+  if (error || !activities) return [];
+
+  const activityIds = activities.map((a: Record<string, unknown>) => a.id as string);
+  if (activityIds.length === 0) return [];
+
+  const { data: interactions } = await supabase
+    .from('activity_interactions')
+    .select('*, parent:parents(*)')
+    .in('activity_id', activityIds);
+
+  return activities.map((row: Record<string, unknown>) =>
+    buildSocialProof(row, interactions ?? [], me),
+  );
 }
 
 function buildSocialProof(
-  activity: Activity,
-  connectedIds: Set<UUID>,
+  row: Record<string, unknown>,
+  allInteractions: Record<string, unknown>[],
   me: UUID,
 ): ActivitySocialProof {
-  const rows = mockActivityInteractions.filter((i) => i.activity_id === activity.id);
+  const activity: Activity = {
+    id: row.id as string,
+    name: row.name as string,
+    emoji: (row.emoji as string) ?? null,
+    description: (row.description as string) ?? null,
+    venue_id: (row.venue_id as string) ?? null,
+    starts_at: (row.starts_at as string) ?? null,
+    ends_at: (row.ends_at as string) ?? null,
+    source: row.source as Activity['source'],
+    source_metadata: (row.source_metadata as Record<string, unknown>) ?? {},
+    confidence_score: (row.confidence_score as number) ?? null,
+    created_by: (row.created_by as string) ?? null,
+    published: row.published as boolean,
+    created_at: row.created_at as string,
+  };
+  const venue = (row.venue as Venue) ?? null;
+
+  const rows = allInteractions.filter(
+    (i) => (i.activity_id as string) === activity.id,
+  );
+
   const interestedConnections: Parent[] = [];
   const goingConnections: Parent[] = [];
   let myState: InteractionState | null = null;
 
-  for (const row of rows) {
-    if (row.parent_id === me) {
-      myState = row.state;
+  for (const i of rows) {
+    const parentId = i.parent_id as string;
+    const state = i.state as InteractionState;
+    if (parentId === me) {
+      myState = state;
       continue;
     }
-    if (!connectedIds.has(row.parent_id)) continue;
-    const author = parentById(row.parent_id);
-    if (!author) continue;
-    if (row.state === 'interested') interestedConnections.push(author);
-    else if (row.state === 'going' || row.state === 'attended') goingConnections.push(author);
+    const parent = i.parent as Parent | null;
+    if (!parent) continue;
+    if (state === 'interested') interestedConnections.push(parent);
+    else if (state === 'going' || state === 'attended') goingConnections.push(parent);
   }
 
-  return {
-    activity,
-    venue: venueById(activity.venue_id),
-    interestedConnections,
-    goingConnections,
-    myState,
-  };
+  return { activity, venue, interestedConnections, goingConnections, myState };
 }
 
 async function updateActivityInteraction(
   activityId: UUID,
   state: InteractionState,
 ): Promise<ActivityInteraction> {
-  const me = CURRENT_PARENT_ID;
-  const existing = mockActivityInteractions.find(
-    (i) => i.parent_id === me && i.activity_id === activityId,
-  );
+  const me = await getCurrentParentId();
   const now = new Date().toISOString();
-  if (existing) {
-    existing.state = state;
-    existing.state_changed_at = now;
-    return existing;
-  }
-  const inserted: ActivityInteraction = {
-    id: `ai-${activityId}-${me}`,
-    parent_id: me,
-    activity_id: activityId,
-    state,
-    state_changed_at: now,
-    created_at: now,
-  };
-  mockActivityInteractions.push(inserted);
-  return inserted;
+
+  const { data, error } = await supabase
+    .from('activity_interactions')
+    .upsert(
+      { parent_id: me, activity_id: activityId, state, state_changed_at: now, created_at: now },
+      { onConflict: 'parent_id,activity_id' },
+    )
+    .select()
+    .single();
+  if (error) throw error;
+  return data as ActivityInteraction;
 }
 
 // ─────── nearby (IRL tab) ───────
 
-/**
- * "Connected parents currently at a visible venue." Includes Drew's own row.
- */
 async function getNearbyParents(): Promise<NearbyParent[]> {
-  const me = CURRENT_PARENT_ID;
-  const connected = connectedParentIds(me);
-  return mockParentLocations
-    .filter((l) => l.visible && (l.parent_id === me || connected.has(l.parent_id)))
-    .map((location) => {
-      const parent = parentById(location.parent_id);
-      if (!parent) throw new Error(`Location ${location.id} has unknown parent`);
-      return { parent, location, venue: venueById(location.venue_id) };
-    });
+  const { data, error } = await supabase
+    .from('parent_locations')
+    .select('*, parent:parents(*), venue:venues(*)')
+    .eq('visible', true);
+  if (error || !data) return [];
+  return data.map((row: Record<string, unknown>) => ({
+    parent: row.parent as Parent,
+    location: {
+      id: row.id as string,
+      parent_id: row.parent_id as string,
+      venue_id: (row.venue_id as string) ?? null,
+      visible: row.visible as boolean,
+      last_seen_at: row.last_seen_at as string,
+      expires_at: (row.expires_at as string) ?? null,
+    },
+    venue: (row.venue as Venue) ?? null,
+  }));
 }
 
-/** Visible connected parents for the visibility chip avatar stack. */
 async function getVisibleConnectionAvatars(): Promise<Parent[]> {
-  const me = CURRENT_PARENT_ID;
-  const connected = connectedParentIds(me);
-  return mockParentLocations
-    .filter((l) => l.visible && connected.has(l.parent_id))
-    .map((l) => parentById(l.parent_id))
+  const me = await getCurrentParentId();
+  const { data, error } = await supabase
+    .from('parent_locations')
+    .select('parent:parents(*)')
+    .eq('visible', true)
+    .neq('parent_id', me);
+  if (error || !data) return [];
+  return data
+    .map((row: Record<string, unknown>) => row.parent as Parent | null)
     .filter((p): p is Parent => p !== null);
 }
 
-/**
- * "Warming up" — venues with connected parents present, sorted by count.
- */
 async function getWarmingUpVenues(): Promise<{ venue: Venue; count: number }[]> {
-  const me = CURRENT_PARENT_ID;
-  const connected = connectedParentIds(me);
-  const counts = new Map<UUID, number>();
-  for (const loc of mockParentLocations) {
-    if (!loc.visible || !loc.venue_id) continue;
-    if (loc.parent_id === me) continue;
-    if (!connected.has(loc.parent_id)) continue;
-    counts.set(loc.venue_id, (counts.get(loc.venue_id) ?? 0) + 1);
+  const me = await getCurrentParentId();
+
+  // Get all venues
+  const { data: venues } = await supabase.from('venues').select('*');
+  if (!venues) return [];
+
+  // Count visible parents per venue (excluding self)
+  const { data: locations } = await supabase
+    .from('parent_locations')
+    .select('venue_id')
+    .eq('visible', true)
+    .neq('parent_id', me);
+
+  const counts = new Map<string, number>();
+  for (const loc of locations ?? []) {
+    const vid = (loc as Record<string, unknown>).venue_id as string | null;
+    if (vid) counts.set(vid, (counts.get(vid) ?? 0) + 1);
   }
-  // Include venues with upcoming activities too — design shows Albany Aquatic
-  // even when no one is currently there, since it's a known venue.
-  for (const venue of mockVenues) {
-    if (!counts.has(venue.id)) counts.set(venue.id, 0);
-  }
-  return [...counts.entries()]
-    .map(([venueId, count]) => {
-      const venue = venueById(venueId);
-      return venue ? { venue, count } : null;
-    })
-    .filter((x): x is { venue: Venue; count: number } => x !== null)
+
+  return (venues as Venue[])
+    .map((venue) => ({ venue, count: counts.get(venue.id) ?? 0 }))
     .sort((a, b) => b.count - a.count);
 }
 
 async function setMyVisibility(visible: boolean): Promise<void> {
-  const me = CURRENT_PARENT_ID;
-  const row = mockParentLocations.find((l) => l.parent_id === me);
-  if (row) row.visible = visible;
+  const me = await getCurrentParentId();
+  const { data: existing } = await supabase
+    .from('parent_locations')
+    .select('id')
+    .eq('parent_id', me)
+    .maybeSingle();
+
+  if (existing) {
+    await supabase
+      .from('parent_locations')
+      .update({ visible, last_seen_at: new Date().toISOString() })
+      .eq('parent_id', me);
+  } else {
+    await supabase
+      .from('parent_locations')
+      .insert({ parent_id: me, visible, last_seen_at: new Date().toISOString() });
+  }
 }
 
 // ─────── profile (You tab + profile/[id]) ───────
 
 async function getProfile(parentId: UUID): Promise<ProfileView | null> {
-  const parent = parentById(parentId);
-  if (!parent) return null;
-  const me = CURRENT_PARENT_ID;
+  const me = await getCurrentParentId();
 
-  const kids = mockKids.filter((k) => k.parent_id === parentId);
+  const { data: parent } = await supabase
+    .from('parents')
+    .select('*')
+    .eq('id', parentId)
+    .single();
+  if (!parent) return null;
+
+  const { data: kids } = await supabase
+    .from('kids')
+    .select('*')
+    .eq('parent_id', parentId);
 
   let connectionStatus: ConnectionStatus | 'none' = 'none';
   if (parentId !== me) {
-    const conn = mockConnections.find(
-      (c) =>
-        (c.parent_a === me && c.parent_b === parentId) ||
-        (c.parent_b === me && c.parent_a === parentId),
-    );
-    connectionStatus = conn?.status ?? 'none';
+    const [a, b] = me < parentId ? [me, parentId] : [parentId, me];
+    const { data: conn } = await supabase
+      .from('connections')
+      .select('status')
+      .eq('parent_a', a)
+      .eq('parent_b', b)
+      .maybeSingle();
+    connectionStatus = (conn?.status as ConnectionStatus) ?? 'none';
   }
 
-  // Mutual friends — connected to both me AND them.
-  const myConns = connectedParentIds(me);
-  const theirConns = connectedParentIds(parentId);
+  // Mutual friends
   let mutualFriendCount = 0;
-  for (const id of myConns) {
-    if (theirConns.has(id)) mutualFriendCount += 1;
+  if (parentId !== me) {
+    const { data: myConns } = await supabase
+      .from('connections')
+      .select('parent_a, parent_b')
+      .eq('status', 'connected');
+    const myFriends = new Set<string>();
+    for (const c of myConns ?? []) {
+      const r = c as Record<string, unknown>;
+      if (r.parent_a === me) myFriends.add(r.parent_b as string);
+      else if (r.parent_b === me) myFriends.add(r.parent_a as string);
+    }
+
+    const { data: theirConns } = await supabase
+      .from('connections')
+      .select('parent_a, parent_b')
+      .eq('status', 'connected');
+    for (const c of theirConns ?? []) {
+      const r = c as Record<string, unknown>;
+      const other = r.parent_a === parentId ? (r.parent_b as string) : (r.parent_a as string);
+      if (myFriends.has(other)) mutualFriendCount++;
+    }
   }
 
-  // Activity chips — venues from activities they've interacted with.
+  // Activity chips
+  const { data: interactions } = await supabase
+    .from('activity_interactions')
+    .select('activity:activities(name, venue_id, venue:venues(name, emoji))')
+    .eq('parent_id', parentId)
+    .not('state', 'in', '("skipped","saved")');
+
   const venueNames = new Set<string>();
-  for (const i of mockActivityInteractions) {
-    if (i.parent_id !== parentId) continue;
-    if (i.state === 'skipped' || i.state === 'saved') continue;
-    const activity = activityById(i.activity_id);
-    if (!activity) continue;
-    const venue = venueById(activity.venue_id);
-    if (venue) venueNames.add(`${venue.emoji ?? ''} ${venue.name}`.trim());
+  for (const row of interactions ?? []) {
+    const r = row as Record<string, unknown>;
+    const act = r.activity as Record<string, unknown> | null;
+    if (!act) continue;
+    const v = act.venue as Record<string, unknown> | null;
+    if (v) venueNames.add(`${(v.emoji as string) ?? ''} ${v.name as string}`.trim());
   }
 
   return {
-    parent,
-    kids,
+    parent: parent as Parent,
+    kids: (kids ?? []) as Kid[],
     connectionStatus,
     mutualFriendCount,
     activityChips: [...venueNames].slice(0, 4),
   };
 }
 
-// ─────── connections (You tab requests inbox in Phase 10) ───────
+// ─────── connections ───────
 
 async function getConnections(): Promise<Connection[]> {
-  const me = CURRENT_PARENT_ID;
-  return mockConnections.filter((c) => c.parent_a === me || c.parent_b === me);
+  const { data, error } = await supabase
+    .from('connections')
+    .select('*');
+  if (error) throw error;
+  return (data ?? []) as Connection[];
 }
 
-/**
- * Send a connection request to another parent.
- * Idempotent — if a connection row already exists between us we return it.
- */
 async function requestConnection(otherId: UUID): Promise<Connection> {
-  const me = CURRENT_PARENT_ID;
+  const me = await getCurrentParentId();
   if (otherId === me) throw new Error('Cannot connect to self');
   const [a, b] = me < otherId ? [me, otherId] : [otherId, me];
-  const existing = mockConnections.find(
-    (c) => c.parent_a === a && c.parent_b === b,
-  );
-  if (existing) return existing;
-  const inserted: Connection = {
-    id: `conn-${a.slice(-6)}-${b.slice(-6)}`,
-    parent_a: a,
-    parent_b: b,
-    status: 'pending',
-    initiated_by: me,
-    created_at: new Date().toISOString(),
-    responded_at: null,
-  };
-  mockConnections.push(inserted);
-  return inserted;
+
+  const { data: existing } = await supabase
+    .from('connections')
+    .select('*')
+    .eq('parent_a', a)
+    .eq('parent_b', b)
+    .maybeSingle();
+  if (existing) return existing as Connection;
+
+  const { data, error } = await supabase
+    .from('connections')
+    .insert({ parent_a: a, parent_b: b, status: 'pending', initiated_by: me })
+    .select()
+    .single();
+  if (error) throw error;
+  return data as Connection;
 }
 
-// ─────── stories / calendar (architecture stubs) ───────
+// ─────── calendar ───────
 
 async function getCalendarEvents(): Promise<CalendarEvent[]> {
-  const me = CURRENT_PARENT_ID;
-  return mockCalendarEvents.filter((e) => e.parent_id === me);
+  const { data, error } = await supabase
+    .from('calendar_events')
+    .select('*');
+  if (error) throw error;
+  return (data ?? []) as CalendarEvent[];
 }
 
-// ─────── posts (compose in Phase 8) ───────
+// ─────── posts (compose) ───────
 
 async function createPost(input: Omit<Post, 'id' | 'created_at'>): Promise<Post> {
-  const post: Post = {
-    ...input,
-    id: `post-${Date.now()}`,
-    created_at: new Date().toISOString(),
-  };
-  mockPosts.unshift(post);
-  return post;
+  const { data, error } = await supabase
+    .from('posts')
+    .insert(input)
+    .select()
+    .single();
+  if (error) throw error;
+  return data as Post;
 }
 
 // ─────── public interface ───────
 
 export const data = {
-  // identity
   getCurrentUser,
-
-  // Buzz
   getFeedPosts,
   getPendingPrompt,
   markPromptActed,
   dismissPrompt,
-
-  // Plans
   getUpcomingActivities,
   getDiscoveredActivityPreviews,
   updateActivityInteraction,
-
-  // IRL
   getNearbyParents,
   getVisibleConnectionAvatars,
   getWarmingUpVenues,
   setMyVisibility,
-
-  // You / profiles
   getProfile,
   getConnections,
   requestConnection,
-
-  // Compose / calendar
   createPost,
   getCalendarEvents,
 };
