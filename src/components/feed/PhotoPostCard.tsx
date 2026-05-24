@@ -1,4 +1,4 @@
-import { Text, View } from 'react-native';
+import { Image, Text, View } from 'react-native';
 import { colors, fonts } from '@/lib/constants';
 import {
   AvatarCircle,
@@ -49,12 +49,20 @@ export function PhotoPostCard({ item }: PhotoPostCardProps) {
           elevation: 5,
         }}
       >
-        <PhotoTile
-          tone={tone}
-          height={300}
-          label={post.body ? post.body.toLowerCase() : 'family moment'}
-          radius={2}
-        />
+        {post.media_path ? (
+          <Image
+            source={{ uri: post.media_path }}
+            style={{ width: '100%', height: 300, borderRadius: 2 }}
+            resizeMode="cover"
+          />
+        ) : (
+          <PhotoTile
+            tone={tone}
+            height={300}
+            label={post.body ? post.body.toLowerCase() : 'family moment'}
+            radius={2}
+          />
+        )}
 
         <View
           style={{

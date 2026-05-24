@@ -16,6 +16,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
 import { colors, fonts } from '@/lib/constants';
 import { data } from '@/lib/data';
+import { uploadPostImage } from '@/lib/storage';
 import { useCurrentParentId } from '@/hooks/useCurrentParentId';
 import { Icon, TerracottaButton } from '@/components/ui';
 
@@ -54,11 +55,16 @@ export default function ComposeScreen() {
     setSubmitting(true);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
 
+    let mediaPath: string | null = null;
+    if (imageUri) {
+      mediaPath = await uploadPostImage(myId, imageUri);
+    }
+
     await data.createPost({
       author_id: myId,
       type: kind,
       body: body.trim() || null,
-      media_path: imageUri,
+      media_path: mediaPath,
       activity_id: null,
       story_id: null,
       location_share_mode: 'none',
