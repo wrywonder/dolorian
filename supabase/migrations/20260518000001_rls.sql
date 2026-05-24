@@ -34,6 +34,9 @@ create policy parents_update_self on parents
   for update using (id = current_parent_id())
   with check (id = current_parent_id());
 
+create policy parents_insert_self on parents
+  for insert with check (auth_user_id = auth.uid());
+
 -- ─────── kids ───────
 alter table kids enable row level security;
 
