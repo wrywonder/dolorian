@@ -15,7 +15,10 @@ import type {
   Connection,
   ConnectionStatus,
   FeedItem,
+  IncomingRequest,
   InteractionState,
+  InviteOutcome,
+  OutgoingRequest,
   Kid,
   NearbyParent,
   Parent,
@@ -447,6 +450,55 @@ async function requestConnection(otherId: UUID): Promise<Connection> {
   return data as Connection;
 }
 
+// ─────── invites & requests (You tab) ───────
+
+async function sendInvite(input: {
+  email?: string | null;
+  phone?: string | null;
+}): Promise<InviteOutcome> {
+  const { data, error } = await supabase.rpc('send_invite', {
+    target_email: input.email ?? null,
+    target_phone: input.phone ?? null,
+  });
+  if (error) throw error;
+  return (data as { outcome: InviteOutcome }).outcome;
+}
+
+async function getIncomingRequests(): Promise<IncomingRequest[]> {
+  const { data, error } = await supabase.rpc('get_incoming_requests');
+  if (error) throw error;
+  return (data ?? []) as IncomingRequest[];
+}
+
+async function getOutgoingRequests(): Promise<OutgoingRequest[]> {
+  const { data, error } = await supabase.rpc('get_outgoing_requests');
+  if (error) throw error;
+  return (data ?? []) as OutgoingRequest[];
+}
+
+async function cancelOutgoing(kind: 'request' | 'invite', id: UUID): Promise<void> {
+  const { error } = await supabase.rpc('cancel_outgoing', {
+    target_kind: kind,
+    target_id: id,
+  });
+  if (error) throw error;
+}
+
+async function respondToRequest(connectionId: UUID, accept: boolean): Promise<void> {
+  const { error } = await supabase.rpc('respond_to_request', {
+    connection_id: connectionId,
+    accept,
+  });
+  if (error) throw error;
+}
+
+/** Convert any invites addressed to the freshly-onboarded user into requests. */
+async function resolveMyInvites(): Promise<number> {
+  const { data, error } = await supabase.rpc('resolve_my_invites');
+  if (error) throw error;
+  return (data as number) ?? 0;
+}
+
 // ─────── calendar ───────
 
 async function getCalendarEvents(): Promise<CalendarEvent[]> {
@@ -487,6 +539,12 @@ export const data = {
   getProfile,
   getConnections,
   requestConnection,
+  sendInvite,
+  getIncomingRequests,
+  getOutgoingRequests,
+  cancelOutgoing,
+  respondToRequest,
+  resolveMyInvites,
   createPost,
   getCalendarEvents,
 };

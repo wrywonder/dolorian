@@ -11,6 +11,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase';
+import { data } from '@/lib/data';
+import { normalizePhoneE164 } from '@/lib/contact';
 import { colors, fonts, type AvatarTone } from '@/lib/constants';
 import { AvatarCircle, TerracottaButton } from '@/components/ui';
 
@@ -19,6 +21,7 @@ const TONES: AvatarTone[] = ['peach', 'golden', 'sage', 'mauve', 'slate', 'rose'
 export default function OnboardScreen() {
   const [displayName, setDisplayName] = useState('');
   const [neighborhood, setNeighborhood] = useState('');
+  const [phone, setPhone] = useState('');
   const [tone, setTone] = useState<AvatarTone>('peach');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -39,16 +42,38 @@ export default function OnboardScreen() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { setError('session expired — please sign in again'); setLoading(false); return; }
 
+    // Phone is optional, but if present it must be a plausible number — it's a
+    // contact handle others can invite us by, so a bad value is worth catching.
+    const trimmedPhone = phone.trim();
+    const phoneE164 = trimmedPhone ? normalizePhoneE164(trimmedPhone) : null;
+    if (trimmedPhone && !phoneE164) {
+      setError('that phone number doesn’t look right'); setLoading(false); return;
+    }
+
     const { error: err } = await supabase.from('parents').insert({
       auth_user_id: user.id,
       display_name: displayName.trim(),
+      email: user.email?.toLowerCase() ?? null,
       neighborhood: neighborhood.trim() || null,
+      phone_e164: phoneE164,
       avatar_color: tone,
       avatar_initials: initials || '?',
     });
 
+    if (err) {
+      setLoading(false);
+      // A unique-violation on phone means someone already claimed it.
+      setError(err.code === '23505'
+        ? 'that phone number is already on dolorian'
+        : err.message);
+      return;
+    }
+
+    // Turn any invites that were addressed to our email/phone into pending
+    // requests so they're waiting in the inbox the moment we land.
+    await data.resolveMyInvites().catch(() => {});
+
     setLoading(false);
-    if (err) { setError(err.message); return; }
     router.replace('/(tabs)/buzz');
   };
 
@@ -113,6 +138,27 @@ export default function OnboardScreen() {
                 onChangeText={setNeighborhood}
                 placeholder="e.g. North Berkeley"
                 placeholderTextColor={colors.taupe}
+                style={{
+                  fontFamily: fonts.sansBold,
+                  fontSize: 16,
+                  color: colors.dark,
+                  borderBottomWidth: 1.5,
+                  borderBottomColor: colors.rule,
+                  paddingVertical: 8,
+                }}
+              />
+            </View>
+
+            <View>
+              <Text style={{ fontFamily: fonts.monoBold, fontSize: 10, color: colors.taupe, letterSpacing: 0.6, marginBottom: 6 }}>
+                PHONE <Text style={{ color: colors.taupe }}>(optional)</Text>
+              </Text>
+              <TextInput
+                value={phone}
+                onChangeText={setPhone}
+                placeholder="so friends can find you"
+                placeholderTextColor={colors.taupe}
+                keyboardType="phone-pad"
                 style={{
                   fontFamily: fonts.sansBold,
                   fontSize: 16,

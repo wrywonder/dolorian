@@ -6,6 +6,7 @@ export type Parent = {
   id: UUID;
   auth_user_id: UUID | null;
   display_name: string;
+  email: string | null;
   neighborhood: string | null;
   avatar_color: AvatarColor;
   avatar_initials: string;
