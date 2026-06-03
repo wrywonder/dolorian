@@ -64,6 +64,25 @@ async function getCurrentUser(): Promise<Parent> {
   return data as Parent;
 }
 
+/** Update the current user's own editable profile fields. */
+async function updateProfile(input: {
+  display_name: string;
+  neighborhood: string | null;
+  phone_e164: string | null;
+  avatar_color: Parent['avatar_color'];
+  avatar_initials: string;
+}): Promise<Parent> {
+  const me = await getCurrentParentId();
+  const { data, error } = await supabase
+    .from('parents')
+    .update(input)
+    .eq('id', me)
+    .select()
+    .single();
+  if (error) throw error;
+  return data as Parent;
+}
+
 // ─────── feed (Buzz tab) ───────
 
 async function getFeedPosts(): Promise<FeedItem[]> {
@@ -525,6 +544,7 @@ async function createPost(input: Omit<Post, 'id' | 'created_at'>): Promise<Post>
 
 export const data = {
   getCurrentUser,
+  updateProfile,
   getFeedPosts,
   getPendingPrompt,
   markPromptActed,

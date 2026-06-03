@@ -1,5 +1,6 @@
 import { View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { router } from 'expo-router';
 import { colors } from '@/lib/constants';
 import { ProfileBody } from '@/components/profile/ProfileBody';
 import { useCurrentParentId } from '@/hooks/useCurrentParentId';
@@ -12,7 +13,7 @@ export default function YouScreen() {
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.cream }} edges={[]}>
       <ProfileBody
         parentId={myId}
-        onSettings={() => {}}
+        onSettings={() => router.push('/profile/edit')}
       />
     </SafeAreaView>
   );

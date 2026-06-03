@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { colors, fonts } from '@/lib/constants';
 import { data } from '@/lib/data';
 import { useCurrentParentId } from '@/hooks/useCurrentParentId';
@@ -28,9 +28,11 @@ export function ProfileBody({ parentId, onSettings }: ProfileBodyProps) {
     setView(result);
   }, [parentId]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load]),
+  );
 
   if (!view) return <View style={{ flex: 1, backgroundColor: colors.cream }} />;
 
