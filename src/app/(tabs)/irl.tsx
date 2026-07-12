@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, type AvatarTone } from '@/lib/constants';
@@ -8,7 +8,7 @@ import { IllustratedMap } from '@/components/irl/IllustratedMap';
 import { WarmingUpStrip } from '@/components/irl/WarmingUpStrip';
 import { useVisibilityStore } from '@/store/visibility';
 import { useCurrentParentId } from '@/hooks/useCurrentParentId';
-import type { NearbyParent, Parent, Venue } from '@/types';
+import type { NearbyParent, Venue } from '@/types';
 
 export default function IrlScreen() {
   const visible = useVisibilityStore((s) => s.visible);
@@ -18,19 +18,21 @@ export default function IrlScreen() {
   const [loading, setLoading] = useState(true);
   const [pins, setPins] = useState<NearbyParent[]>([]);
   const [warmingUp, setWarmingUp] = useState<{ venue: Venue; count: number }[]>([]);
-  const [visibleConnections, setVisibleConnections] = useState<Parent[]>([]);
 
   const load = useCallback(async (initial: boolean = false) => {
     if (initial) setLoading(true);
-    const [near, warm, conns] = await Promise.all([
-      data.getNearbyParents(),
-      data.getWarmingUpVenues(),
-      data.getVisibleConnectionAvatars(),
-    ]);
-    setPins(near);
-    setWarmingUp(warm);
-    setVisibleConnections(conns);
-    if (initial) setLoading(false);
+    try {
+      const [near, warm] = await Promise.all([
+        data.getNearbyParents(),
+        data.getWarmingUpVenues(),
+      ]);
+      setPins(near);
+      setWarmingUp(warm);
+    } catch (e) {
+      console.warn('irl load failed', e);
+    } finally {
+      if (initial) setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -39,6 +41,12 @@ export default function IrlScreen() {
 
   const mapPins = pins.filter((p) => visible || p.parent.id !== myId);
   const otherPins = mapPins.filter((p) => p.parent.id !== myId);
+  // The header chip avatars come straight from the pins we already
+  // fetched — no separate parent_locations query needed on this tab.
+  const visibleConnections = useMemo(
+    () => pins.filter((p) => p.parent.id !== myId).map((p) => p.parent),
+    [pins, myId],
+  );
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.cream }} edges={['top']}>

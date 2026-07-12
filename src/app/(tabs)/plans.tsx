@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { RefreshControl, Text, View } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -32,13 +32,18 @@ export default function PlansScreen() {
 
   const load = useCallback(async (initial: boolean = false) => {
     if (initial) setLoading(true);
-    const [u, d] = await Promise.all([
-      data.getUpcomingActivities(),
-      data.getDiscoveredActivityPreviews(),
-    ]);
-    setUpcoming(u);
-    setDiscovered(d);
-    if (initial) setLoading(false);
+    try {
+      const [u, d] = await Promise.all([
+        data.getUpcomingActivities(),
+        data.getDiscoveredActivityPreviews(),
+      ]);
+      setUpcoming(u);
+      setDiscovered(d);
+    } catch (e) {
+      console.warn('plans load failed', e);
+    } finally {
+      if (initial) setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -51,22 +56,25 @@ export default function PlansScreen() {
     setRefreshing(false);
   }, [load]);
 
-  const rows: Row[] = [
-    ...upcoming.map((proof, i) => ({
-      kind: 'activity' as const,
-      key: `activity-${proof.activity.id}`,
-      proof,
-      rotation: ROTATIONS[i] ?? 0,
-    })),
-    ...(discovered.length > 0
-      ? [{ kind: 'section' as const, key: 'discovered-section', label: 'Discovered for you' }]
-      : []),
-    ...discovered.map((proof) => ({
-      kind: 'discovered' as const,
-      key: `discovered-${proof.activity.id}`,
-      proof,
-    })),
-  ];
+  const rows: Row[] = useMemo(
+    () => [
+      ...upcoming.map((proof, i) => ({
+        kind: 'activity' as const,
+        key: `activity-${proof.activity.id}`,
+        proof,
+        rotation: ROTATIONS[i] ?? 0,
+      })),
+      ...(discovered.length > 0
+        ? [{ kind: 'section' as const, key: 'discovered-section', label: 'Discovered for you' }]
+        : []),
+      ...discovered.map((proof) => ({
+        kind: 'discovered' as const,
+        key: `discovered-${proof.activity.id}`,
+        proof,
+      })),
+    ],
+    [upcoming, discovered],
+  );
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.cream }} edges={['top']}>

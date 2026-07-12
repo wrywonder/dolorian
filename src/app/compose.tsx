@@ -34,6 +34,7 @@ export default function ComposeScreen() {
   const [body, setBody] = useState('');
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -52,27 +53,33 @@ export default function ComposeScreen() {
     if (kind === 'photo' && !imageUri && !body.trim()) return;
     if (kind !== 'photo' && !body.trim()) return;
 
+    setError(null);
     setSubmitting(true);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
 
-    let mediaPath: string | null = null;
-    if (imageUri) {
-      mediaPath = await uploadPostImage(myId, imageUri);
+    try {
+      let mediaPath: string | null = null;
+      if (imageUri) {
+        mediaPath = await uploadPostImage(myId, imageUri);
+      }
+
+      await data.createPost({
+        author_id: myId,
+        type: kind,
+        body: body.trim() || null,
+        media_path: mediaPath,
+        activity_id: null,
+        story_id: null,
+        location_share_mode: 'none',
+        venue_id: null,
+      });
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      router.back();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'something went wrong — try again');
+    } finally {
+      setSubmitting(false);
     }
-
-    await data.createPost({
-      author_id: myId,
-      type: kind,
-      body: body.trim() || null,
-      media_path: mediaPath,
-      activity_id: null,
-      story_id: null,
-      location_share_mode: 'none',
-      venue_id: null,
-    });
-
-    setSubmitting(false);
-    router.back();
   };
 
   const canSubmit =
@@ -230,6 +237,19 @@ export default function ComposeScreen() {
               borderBottomColor: colors.rule,
             }}
           />
+
+          {error ? (
+            <Text
+              style={{
+                fontFamily: fonts.serif,
+                fontSize: 14,
+                color: colors.terracotta,
+                marginTop: 12,
+              }}
+            >
+              {error}
+            </Text>
+          ) : null}
 
           {/* Submit */}
           <View style={{ marginTop: 24 }}>

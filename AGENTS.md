@@ -53,7 +53,15 @@ Import alias: `@/*` → `src/*` (see `tsconfig.json`).
 
 - `npm install` — install deps (run after every branch switch/pull)
 - `npm run typecheck` — `tsc --noEmit`; **run before every commit**
-- `npm start` / `npm run ios` / `npm run android` / `npm run web` — Expo dev server
+- `npx expo start` — dev server; connects to a **development build**, not Expo Go
+- `npx expo run:ios` — build + launch the dev client on the iOS Simulator (needs Xcode)
+- `eas build --profile development --platform ios` — cloud dev build for a physical device
+- `eas build --profile production --platform ios` + `eas submit -p ios` — TestFlight
+
+**Expo Go does not work for this app** — react-native-maps (and push
+notifications) require a development build. Profiles live in `eas.json`.
+The generated `ios/`/`android/` folders are gitignored (CNG/prebuild);
+never edit them by hand — change `app.json` plugins/config instead.
 
 ## Environment
 
@@ -63,6 +71,11 @@ Runtime needs a local `.env` (gitignored). See `.env.example`. Required:
 - `EXPO_PUBLIC_SUPABASE_ANON_KEY`
 
 Only `EXPO_PUBLIC_`-prefixed vars are exposed to the app. Never commit real keys.
+
+For **EAS cloud builds** the `.env` file isn't uploaded — the same two vars must
+also exist as EAS environment variables (`eas env:create`, or the project's
+Environment Variables page on expo.dev) or release builds ship with an
+unconfigured Supabase client.
 
 ## Conventions
 

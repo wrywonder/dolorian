@@ -67,7 +67,8 @@ async function getFeedPosts(): Promise<FeedItem[]> {
   const { data: posts, error } = await supabase
     .from('posts')
     .select('*, author:parents!author_id(*), activity:activities(*), venue:venues(*)')
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false })
+    .limit(50);
   if (error) throw error;
   return (posts ?? []).map((row: Record<string, unknown>) => ({
     post: extractPost(row),
@@ -110,29 +111,30 @@ async function getPendingPrompt(): Promise<ResolvedPrompt | null> {
 async function resolvePrompt<T extends PromptType>(prompt: Prompt<T>): Promise<ResolvedPrompt<T>> {
   const payload = prompt.payload as Record<string, unknown>;
   const activityId = payload.activity_id as string | undefined;
+  const signalId =
+    prompt.prompt_type === 'rsvp_from_friend_signal'
+      ? (payload.signal_from as string | undefined)
+      : undefined;
+
+  const [activityRes, signalRes] = await Promise.all([
+    activityId
+      ? supabase.from('activities').select('*, venue:venues(*)').eq('id', activityId).maybeSingle()
+      : Promise.resolve({ data: null }),
+    signalId
+      ? supabase.from('parents').select('*').eq('id', signalId).maybeSingle()
+      : Promise.resolve({ data: null }),
+  ]);
 
   let activity: Activity | null = null;
   let venue: Venue | null = null;
-  let signalFrom: Parent | null = null;
-
-  if (activityId) {
-    const { data } = await supabase.from('activities').select('*').eq('id', activityId).single();
-    activity = (data as Activity) ?? null;
-    if (activity?.venue_id) {
-      const { data: v } = await supabase.from('venues').select('*').eq('id', activity.venue_id).single();
-      venue = (v as Venue) ?? null;
-    }
+  const raw = activityRes.data as (Activity & { venue: Venue | null }) | null;
+  if (raw) {
+    const { venue: v, ...rest } = raw;
+    activity = rest as Activity;
+    venue = v ?? null;
   }
 
-  if (prompt.prompt_type === 'rsvp_from_friend_signal') {
-    const signalId = payload.signal_from as string | undefined;
-    if (signalId) {
-      const { data } = await supabase.from('parents').select('*').eq('id', signalId).single();
-      signalFrom = (data as Parent) ?? null;
-    }
-  }
-
-  return { prompt, activity, venue, signalFrom };
+  return { prompt, activity, venue, signalFrom: (signalRes.data as Parent | null) ?? null };
 }
 
 async function markPromptActed(promptId: UUID): Promise<void> {
@@ -294,16 +296,16 @@ async function getVisibleConnectionAvatars(): Promise<Parent[]> {
 async function getWarmingUpVenues(): Promise<{ venue: Venue; count: number }[]> {
   const me = await getCurrentParentId();
 
-  // Get all venues
-  const { data: venues } = await supabase.from('venues').select('*');
+  // All venues + visible parents per venue (excluding self), in parallel
+  const [{ data: venues }, { data: locations }] = await Promise.all([
+    supabase.from('venues').select('*'),
+    supabase
+      .from('parent_locations')
+      .select('venue_id')
+      .eq('visible', true)
+      .neq('parent_id', me),
+  ]);
   if (!venues) return [];
-
-  // Count visible parents per venue (excluding self)
-  const { data: locations } = await supabase
-    .from('parent_locations')
-    .select('venue_id')
-    .eq('visible', true)
-    .neq('parent_id', me);
 
   const counts = new Map<string, number>();
   for (const loc of locations ?? []) {
@@ -318,84 +320,65 @@ async function getWarmingUpVenues(): Promise<{ venue: Venue; count: number }[]> 
 
 async function setMyVisibility(visible: boolean): Promise<void> {
   const me = await getCurrentParentId();
-  const { data: existing } = await supabase
+  // parent_locations has a unique constraint on parent_id, so a single
+  // upsert replaces the previous select-then-insert/update round trips.
+  const { error } = await supabase
     .from('parent_locations')
-    .select('id')
+    .upsert(
+      { parent_id: me, visible, last_seen_at: new Date().toISOString() },
+      { onConflict: 'parent_id' },
+    );
+  if (error) throw error;
+}
+
+async function getMyVisibility(): Promise<boolean | null> {
+  const me = await getCurrentParentId();
+  const { data } = await supabase
+    .from('parent_locations')
+    .select('visible')
     .eq('parent_id', me)
     .maybeSingle();
-
-  if (existing) {
-    await supabase
-      .from('parent_locations')
-      .update({ visible, last_seen_at: new Date().toISOString() })
-      .eq('parent_id', me);
-  } else {
-    await supabase
-      .from('parent_locations')
-      .insert({ parent_id: me, visible, last_seen_at: new Date().toISOString() });
-  }
+  return (data?.visible as boolean | undefined) ?? null;
 }
 
 // ─────── profile (You tab + profile/[id]) ───────
 
 async function getProfile(parentId: UUID): Promise<ProfileView | null> {
   const me = await getCurrentParentId();
+  const isSelf = parentId === me;
+  const [a, b] = me < parentId ? [me, parentId] : [parentId, me];
 
-  const { data: parent } = await supabase
-    .from('parents')
-    .select('*')
-    .eq('id', parentId)
-    .single();
+  const [parentRes, kidsRes, connRes, mutualRes, interactionsRes] = await Promise.all([
+    supabase.from('parents').select('*').eq('id', parentId).maybeSingle(),
+    supabase.from('kids').select('*').eq('parent_id', parentId),
+    isSelf
+      ? Promise.resolve({ data: null })
+      : supabase
+          .from('connections')
+          .select('status')
+          .eq('parent_a', a)
+          .eq('parent_b', b)
+          .maybeSingle(),
+    // RLS only exposes connections involving me, so mutual friends are
+    // computed server-side by a security-definer function.
+    isSelf
+      ? Promise.resolve({ data: 0 })
+      : supabase.rpc('mutual_friend_count', { other: parentId }),
+    supabase
+      .from('activity_interactions')
+      .select('activity:activities(name, venue_id, venue:venues(name, emoji))')
+      .eq('parent_id', parentId)
+      .not('state', 'in', '("skipped","saved")'),
+  ]);
+
+  const parent = parentRes.data;
   if (!parent) return null;
 
-  const { data: kids } = await supabase
-    .from('kids')
-    .select('*')
-    .eq('parent_id', parentId);
-
-  let connectionStatus: ConnectionStatus | 'none' = 'none';
-  if (parentId !== me) {
-    const [a, b] = me < parentId ? [me, parentId] : [parentId, me];
-    const { data: conn } = await supabase
-      .from('connections')
-      .select('status')
-      .eq('parent_a', a)
-      .eq('parent_b', b)
-      .maybeSingle();
-    connectionStatus = (conn?.status as ConnectionStatus) ?? 'none';
-  }
-
-  // Mutual friends
-  let mutualFriendCount = 0;
-  if (parentId !== me) {
-    const { data: myConns } = await supabase
-      .from('connections')
-      .select('parent_a, parent_b')
-      .eq('status', 'connected');
-    const myFriends = new Set<string>();
-    for (const c of myConns ?? []) {
-      const r = c as Record<string, unknown>;
-      if (r.parent_a === me) myFriends.add(r.parent_b as string);
-      else if (r.parent_b === me) myFriends.add(r.parent_a as string);
-    }
-
-    const { data: theirConns } = await supabase
-      .from('connections')
-      .select('parent_a, parent_b')
-      .eq('status', 'connected');
-    for (const c of theirConns ?? []) {
-      const r = c as Record<string, unknown>;
-      const other = r.parent_a === parentId ? (r.parent_b as string) : (r.parent_a as string);
-      if (myFriends.has(other)) mutualFriendCount++;
-    }
-  }
-
-  // Activity chips
-  const { data: interactions } = await supabase
-    .from('activity_interactions')
-    .select('activity:activities(name, venue_id, venue:venues(name, emoji))')
-    .eq('parent_id', parentId)
-    .not('state', 'in', '("skipped","saved")');
+  const kids = kidsRes.data;
+  const connectionStatus: ConnectionStatus | 'none' =
+    ((connRes.data as { status: ConnectionStatus } | null)?.status) ?? 'none';
+  const mutualFriendCount = (mutualRes.data as number | null) ?? 0;
+  const interactions = interactionsRes.data;
 
   const venueNames = new Set<string>();
   for (const row of interactions ?? []) {
@@ -484,6 +467,7 @@ export const data = {
   getVisibleConnectionAvatars,
   getWarmingUpVenues,
   setMyVisibility,
+  getMyVisibility,
   getProfile,
   getConnections,
   requestConnection,

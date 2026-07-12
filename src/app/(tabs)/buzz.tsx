@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { RefreshControl, View } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -36,15 +36,20 @@ export default function BuzzScreen() {
   const load = useCallback(
     async (initial: boolean = false) => {
       if (initial) setLoading(true);
-      const [posts, pending, connections] = await Promise.all([
-        data.getFeedPosts(),
-        data.getPendingPrompt(),
-        data.getVisibleConnectionAvatars(),
-      ]);
-      setFeed(posts);
-      setPrompt(pending);
-      setVisibleConnections(connections);
-      if (initial) setLoading(false);
+      try {
+        const [posts, pending, connections] = await Promise.all([
+          data.getFeedPosts(),
+          data.getPendingPrompt(),
+          data.getVisibleConnectionAvatars(),
+        ]);
+        setFeed(posts);
+        setPrompt(pending);
+        setVisibleConnections(connections);
+      } catch (e) {
+        console.warn('buzz feed load failed', e);
+      } finally {
+        if (initial) setLoading(false);
+      }
     },
     [],
   );
@@ -59,15 +64,18 @@ export default function BuzzScreen() {
     setRefreshing(false);
   }, [load]);
 
-  const rows: RowKind[] = [
-    ...(prompt ? [{ kind: 'prompt' as const, resolved: prompt }] : []),
-    ...feed.map((item) => ({ kind: 'post' as const, item })),
-  ];
+  const rows: RowKind[] = useMemo(
+    () => [
+      ...(prompt ? [{ kind: 'prompt' as const, resolved: prompt }] : []),
+      ...feed.map((item) => ({ kind: 'post' as const, item })),
+    ],
+    [prompt, feed],
+  );
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.cream }} edges={['top']}>
       <ScreenHeader
-        eyebrow={eyebrowDate('2026-05-24T17:38:00Z')}
+        eyebrow={eyebrowDate(new Date().toISOString())}
         title="buzz"
         flourish="squiggle"
         right={
