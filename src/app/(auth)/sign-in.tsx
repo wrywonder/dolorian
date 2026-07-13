@@ -17,6 +17,12 @@ import { Squiggle } from '@/components/ui';
 
 type Step = 'email' | 'otp';
 
+// Apple's beta reviewers can't receive OTP emails, so this one known
+// account signs in with its password typed in place of the code. Only
+// the email ships in the binary — the password lives in Supabase and
+// App Store Connect's sign-in info.
+const REVIEW_EMAIL = 'appreview@dolorian.app';
+
 export default function SignInScreen() {
   const [step, setStep] = useState<Step>('email');
   const [email, setEmail] = useState('');
@@ -24,8 +30,11 @@ export default function SignInScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const isReviewAccount = email.trim().toLowerCase() === REVIEW_EMAIL;
+
   const sendOtp = async () => {
     setError(null);
+    if (isReviewAccount) { setStep('otp'); return; }
     setLoading(true);
     const { error: err } = await supabase.auth.signInWithOtp({ email: email.trim() });
     setLoading(false);
@@ -36,19 +45,25 @@ export default function SignInScreen() {
   const verifyOtp = async () => {
     setError(null);
     setLoading(true);
-    const { data, error: err } = await supabase.auth.verifyOtp({
-      email: email.trim(),
-      token: otp.trim(),
-      type: 'email',
-    });
+    const { data, error: err } = isReviewAccount
+      ? await supabase.auth.signInWithPassword({
+          email: REVIEW_EMAIL,
+          password: otp.trim(),
+        })
+      : await supabase.auth.verifyOtp({
+          email: email.trim(),
+          token: otp.trim(),
+          type: 'email',
+        });
     setLoading(false);
     if (err) { setError(err.message); return; }
+    if (!data.user) { setError('sign in failed — try again'); return; }
 
     // Check if this user already has a parent profile
     const { data: parent } = await supabase
       .from('parents')
       .select('id')
-      .eq('auth_user_id', data.user!.id)
+      .eq('auth_user_id', data.user.id)
       .maybeSingle();
 
     if (parent) {
