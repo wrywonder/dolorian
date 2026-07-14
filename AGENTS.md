@@ -45,6 +45,8 @@ src/
 supabase/
   migrations/     SQL schema, RLS, storage (timestamp-prefixed)
   functions/      edge functions (generate-story, discover-activities, classify-prompt)
+  seed/           hand-run SQL (not migrations) — e.g. demo data. Never
+                  auto-applied; run manually in the SQL editor when needed.
 ```
 
 Import alias: `@/*` → `src/*` (see `tsconfig.json`).
@@ -88,6 +90,17 @@ unconfigured Supabase client.
 - Match the style of the file you're editing; keep components small and typed.
 - DB changes are new timestamp-prefixed files in `supabase/migrations/` — never
   edit an already-applied migration.
+- **Never upload local files via `fetch(uri).blob()` to Supabase Storage** —
+  React Native's Blob doesn't serialize correctly and silently uploads
+  zero-byte objects (no error). Get base64 from the picker/camera API and
+  upload decoded `ArrayBuffer` bytes instead (see `src/lib/storage.ts`).
+- When a query needs to check visibility across the connection graph that
+  RLS wouldn't otherwise allow the caller to see (e.g. mutual-friend counts,
+  "can this parent see this post"), add a `security definer` SQL function
+  rather than computing it client-side — client-side joins only ever see
+  rows RLS already exposes to the caller, which silently produces wrong
+  results instead of an error. See `current_parent_id()`, `are_connected()`,
+  `can_see_post()` in the migrations for the pattern.
 
 ## Working interchangeably (Claude Code ⇄ Codex)
 
