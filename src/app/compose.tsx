@@ -16,7 +16,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
 import { colors, fonts } from '@/lib/constants';
 import { data } from '@/lib/data';
-import { uploadPostImage } from '@/lib/storage';
+import { uploadPostImage, type PickedImage } from '@/lib/storage';
 import { useCurrentParentId } from '@/hooks/useCurrentParentId';
 import { Icon, TerracottaButton } from '@/components/ui';
 
@@ -32,7 +32,7 @@ export default function ComposeScreen() {
   const myId = useCurrentParentId();
   const [kind, setKind] = useState<PostKind>('photo');
   const [body, setBody] = useState('');
-  const [imageUri, setImageUri] = useState<string | null>(null);
+  const [image, setImage] = useState<PickedImage | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -42,15 +42,19 @@ export default function ComposeScreen() {
       quality: 0.8,
       allowsEditing: true,
       aspect: [4, 3],
+      // base64 feeds the upload — RN's fetch(file://).blob() sends
+      // zero bytes to Supabase Storage (see storage.ts).
+      base64: true,
     });
-    if (!result.canceled && result.assets[0]) {
-      setImageUri(result.assets[0].uri);
+    const asset = result.canceled ? null : result.assets[0];
+    if (asset) {
+      setImage({ uri: asset.uri, base64: asset.base64 ?? null });
     }
   };
 
   const submit = async () => {
     if (!myId) return;
-    if (kind === 'photo' && !imageUri && !body.trim()) return;
+    if (kind === 'photo' && !image && !body.trim()) return;
     if (kind !== 'photo' && !body.trim()) return;
 
     setError(null);
@@ -58,8 +62,8 @@ export default function ComposeScreen() {
 
     try {
       let mediaPath: string | null = null;
-      if (imageUri) {
-        mediaPath = await uploadPostImage(myId, imageUri);
+      if (image) {
+        mediaPath = await uploadPostImage(myId, image);
       }
 
       await data.createPost({
@@ -84,7 +88,7 @@ export default function ComposeScreen() {
 
   const canSubmit =
     kind === 'photo'
-      ? !!(imageUri || body.trim())
+      ? !!(image || body.trim())
       : !!body.trim();
 
   return (
@@ -188,9 +192,9 @@ export default function ComposeScreen() {
                 overflow: 'hidden',
               }}
             >
-              {imageUri ? (
+              {image ? (
                 <Image
-                  source={{ uri: imageUri }}
+                  source={{ uri: image.uri }}
                   style={{ width: '100%', height: '100%' }}
                   resizeMode="cover"
                 />

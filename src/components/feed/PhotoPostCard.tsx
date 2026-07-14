@@ -2,7 +2,6 @@ import { Image, Text, View } from 'react-native';
 import { colors, fonts } from '@/lib/constants';
 import {
   AvatarCircle,
-  Icon,
   PhotoTile,
   Sparkle,
   TimeStampPill,
@@ -105,32 +104,8 @@ export function PhotoPostCard({ item }: PhotoPostCardProps) {
               </Text>
             ) : null}
           </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-              <Icon name="heart.fill" size={17} color={colors.terracotta} weight={2} />
-              <Text
-                style={{
-                  fontFamily: fonts.sansExtra,
-                  fontSize: 14,
-                  color: colors.terracotta,
-                }}
-              >
-                8
-              </Text>
-            </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-              <Icon name="bubble" size={17} color={colors.taupe} weight={2} />
-              <Text
-                style={{
-                  fontFamily: fonts.sansBold,
-                  fontSize: 14,
-                  color: colors.taupe,
-                }}
-              >
-                3
-              </Text>
-            </View>
-          </View>
+          {/* Likes/comments will return here once reactions exist in the
+              schema — placeholder counts read as real activity. */}
         </View>
       </View>
 
