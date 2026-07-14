@@ -17,6 +17,7 @@ export const mockPosts: Post[] = [
     story_id: null,
     location_share_mode: '30min',
     venue_id: VENUE_IDS.cesar_chavez,
+    reaction_emoji: null,
     created_at: '2026-05-24T17:38:00Z', // "22m ago" relative to ~17:00 today
   },
   {
@@ -29,6 +30,7 @@ export const mockPosts: Post[] = [
     story_id: null,
     location_share_mode: 'none',
     venue_id: null,
+    reaction_emoji: null,
     created_at: '2026-05-24T17:00:00Z', // "1h ago"
   },
   {
@@ -41,6 +43,7 @@ export const mockPosts: Post[] = [
     story_id: null,
     location_share_mode: 'until_leave',
     venue_id: VENUE_IDS.albany_aquatic,
+    reaction_emoji: null,
     created_at: '2026-05-24T16:00:00Z',
   },
   {
@@ -53,6 +56,7 @@ export const mockPosts: Post[] = [
     story_id: null,
     location_share_mode: 'none',
     venue_id: null,
+    reaction_emoji: null,
     created_at: '2026-05-24T14:30:00Z',
   },
   {
@@ -65,6 +69,7 @@ export const mockPosts: Post[] = [
     story_id: null,
     location_share_mode: 'none',
     venue_id: null,
+    reaction_emoji: null,
     created_at: '2026-05-23T22:00:00Z',
   },
   {
@@ -77,6 +82,7 @@ export const mockPosts: Post[] = [
     story_id: null,
     location_share_mode: '30min',
     venue_id: VENUE_IDS.cesar_chavez,
+    reaction_emoji: null,
     created_at: '2026-05-23T17:00:00Z',
   },
   {
@@ -89,6 +95,7 @@ export const mockPosts: Post[] = [
     story_id: null,
     location_share_mode: 'until_leave',
     venue_id: VENUE_IDS.albany_aquatic,
+    reaction_emoji: null,
     created_at: '2026-05-22T18:00:00Z',
   },
   {
@@ -101,6 +108,7 @@ export const mockPosts: Post[] = [
     story_id: null,
     location_share_mode: 'none',
     venue_id: null,
+    reaction_emoji: null,
     created_at: '2026-05-21T01:00:00Z',
   },
 ];

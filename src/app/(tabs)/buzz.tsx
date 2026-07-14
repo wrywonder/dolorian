@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { RefreshControl, View } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { colors } from '@/lib/constants';
 import { data } from '@/lib/data';
 import { eyebrowDate } from '@/lib/format';
@@ -57,6 +57,20 @@ export default function BuzzScreen() {
   useEffect(() => {
     load(true);
   }, [load]);
+
+  // Refresh silently when the screen regains focus — e.g. returning
+  // from compose, so a fresh post shows up without a manual pull.
+  // Skip the first focus; the mount effect above already loaded.
+  const hasFocusedOnce = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      if (!hasFocusedOnce.current) {
+        hasFocusedOnce.current = true;
+        return;
+      }
+      load(false);
+    }, [load]),
+  );
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
