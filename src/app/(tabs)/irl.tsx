@@ -3,9 +3,9 @@ import { Pressable, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fonts, type AvatarTone } from '@/lib/constants';
 import { data } from '@/lib/data';
-import { EmptyState, ScreenHeader, Skeleton, VisibilityChip } from '@/components/ui';
+import { ScreenHeader, Skeleton, VisibilityChip } from '@/components/ui';
 import { AddSpotSheet } from '@/components/irl/AddSpotSheet';
-import { IllustratedMap } from '@/components/irl/IllustratedMap';
+import { LiveMap } from '@/components/irl/LiveMap';
 import { WarmingUpStrip } from '@/components/irl/WarmingUpStrip';
 import { useVisibilityStore } from '@/store/visibility';
 import { useCurrentParentId } from '@/hooks/useCurrentParentId';
@@ -90,18 +90,13 @@ export default function IrlScreen() {
         <View style={{ marginHorizontal: 14, flex: 1 }}>
           <Skeleton width="100%" height="100%" radius={24} />
         </View>
-      ) : mapPins.length === 0 ? (
-        // Truly empty only when even the user isn't on the map — if
-        // they're out & about, their own pin renders below instead.
-        <EmptyState
-          eyebrow="QUIET VILLAGE"
-          title="no one's out & about right now"
-          body="check in at a spot below, or pin a new one — your connections will see you on this map."
-          flourish="sparkle"
-        />
       ) : (
         <View style={{ flex: 1 }}>
-          <IllustratedMap pins={mapPins} meId={myId ?? ''} />
+          <LiveMap
+            pins={mapPins}
+            venues={warmingUp.map((item) => item.venue)}
+            meId={myId ?? ''}
+          />
           <Pressable
             onPress={() => setAddSpotOpen(true)}
             style={{

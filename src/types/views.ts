@@ -51,6 +51,8 @@ export type ProfileView = {
   kids: Kid[];
   /** Connection between current user and this parent, if any. */
   connectionStatus: ConnectionStatus | 'none';
+  /** Null without a pending connection; otherwise whether the viewer sent it. */
+  connectionInitiatedByMe: boolean | null;
   /** Coarse count for "X mutual friends" — shared connections. */
   mutualFriendCount: number;
   /** Activity chips — venue names from activities they've engaged with. */

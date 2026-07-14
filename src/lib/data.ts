@@ -30,6 +30,12 @@ import type {
   Venue,
 } from '@/types';
 
+const LOCATION_VISIBILITY_MS = 2 * 60 * 60 * 1000;
+
+function locationExpiry(from: Date = new Date()): string {
+  return new Date(from.getTime() + LOCATION_VISIBILITY_MS).toISOString();
+}
+
 // ─────── current user identity (cached) ───────
 
 let _cachedParentId: UUID | null = null;
@@ -347,10 +353,12 @@ async function updateActivityInteraction(
 // ─────── nearby (IRL tab) ───────
 
 async function getNearbyParents(): Promise<NearbyParent[]> {
+  const now = new Date().toISOString();
   const { data, error } = await supabase
     .from('parent_locations')
     .select('*, parent:parents(*), venue:venues(*)')
-    .eq('visible', true);
+    .eq('visible', true)
+    .gt('expires_at', now);
   if (error || !data) return [];
   return data.map((row: Record<string, unknown>) => ({
     parent: row.parent as Parent,
@@ -368,10 +376,12 @@ async function getNearbyParents(): Promise<NearbyParent[]> {
 
 async function getVisibleConnectionAvatars(): Promise<Parent[]> {
   const me = await getCurrentParentId();
+  const now = new Date().toISOString();
   const { data, error } = await supabase
     .from('parent_locations')
     .select('parent:parents(*)')
     .eq('visible', true)
+    .gt('expires_at', now)
     .neq('parent_id', me);
   if (error || !data) return [];
   return data
@@ -381,6 +391,7 @@ async function getVisibleConnectionAvatars(): Promise<Parent[]> {
 
 async function getWarmingUpVenues(): Promise<{ venue: Venue; count: number }[]> {
   const me = await getCurrentParentId();
+  const now = new Date().toISOString();
 
   // All venues + visible parents per venue (excluding self), in parallel
   const [{ data: venues }, { data: locations }] = await Promise.all([
@@ -389,6 +400,7 @@ async function getWarmingUpVenues(): Promise<{ venue: Venue; count: number }[]> 
       .from('parent_locations')
       .select('venue_id')
       .eq('visible', true)
+      .gt('expires_at', now)
       .neq('parent_id', me),
   ]);
   if (!venues) return [];
@@ -406,12 +418,18 @@ async function getWarmingUpVenues(): Promise<{ venue: Venue; count: number }[]> 
 
 async function setMyVisibility(visible: boolean): Promise<void> {
   const me = await getCurrentParentId();
+  const now = new Date();
   // parent_locations has a unique constraint on parent_id, so a single
   // upsert replaces the previous select-then-insert/update round trips.
   const { error } = await supabase
     .from('parent_locations')
     .upsert(
-      { parent_id: me, visible, last_seen_at: new Date().toISOString() },
+      {
+        parent_id: me,
+        visible,
+        last_seen_at: now.toISOString(),
+        expires_at: visible ? locationExpiry(now) : now.toISOString(),
+      },
       { onConflict: 'parent_id' },
     );
   if (error) throw error;
@@ -435,10 +453,17 @@ async function createVenue(input: {
 
 async function checkInAtVenue(venueId: UUID): Promise<void> {
   const me = await getCurrentParentId();
+  const now = new Date();
   const { error } = await supabase
     .from('parent_locations')
     .upsert(
-      { parent_id: me, venue_id: venueId, visible: true, last_seen_at: new Date().toISOString() },
+      {
+        parent_id: me,
+        venue_id: venueId,
+        visible: true,
+        last_seen_at: now.toISOString(),
+        expires_at: locationExpiry(now),
+      },
       { onConflict: 'parent_id' },
     );
   if (error) throw error;
@@ -448,10 +473,12 @@ async function getMyVisibility(): Promise<boolean | null> {
   const me = await getCurrentParentId();
   const { data } = await supabase
     .from('parent_locations')
-    .select('visible')
+    .select('visible, expires_at')
     .eq('parent_id', me)
     .maybeSingle();
-  return (data?.visible as boolean | undefined) ?? null;
+  if (!data) return null;
+  const expiresAt = data.expires_at as string | null;
+  return Boolean(data.visible && expiresAt && new Date(expiresAt).getTime() > Date.now());
 }
 
 // ─────── profile (You tab + profile/[id]) ───────
@@ -468,7 +495,7 @@ async function getProfile(parentId: UUID): Promise<ProfileView | null> {
       ? Promise.resolve({ data: null })
       : supabase
           .from('connections')
-          .select('status')
+          .select('status, initiated_by')
           .eq('parent_a', a)
           .eq('parent_b', b)
           .maybeSingle(),
@@ -490,6 +517,9 @@ async function getProfile(parentId: UUID): Promise<ProfileView | null> {
   const kids = kidsRes.data;
   const connectionStatus: ConnectionStatus | 'none' =
     ((connRes.data as { status: ConnectionStatus } | null)?.status) ?? 'none';
+  const connectionInitiatedByMe = connectionStatus === 'pending'
+    ? (connRes.data as { initiated_by: UUID }).initiated_by === me
+    : null;
   const mutualFriendCount = (mutualRes.data as number | null) ?? 0;
   const interactions = interactionsRes.data;
 
@@ -506,9 +536,89 @@ async function getProfile(parentId: UUID): Promise<ProfileView | null> {
     parent: parent as Parent,
     kids: (kids ?? []) as Kid[],
     connectionStatus,
+    connectionInitiatedByMe,
     mutualFriendCount,
     activityChips: [...venueNames].slice(0, 4),
   };
+}
+
+async function updateMyProfile(input: {
+  display_name: string;
+  neighborhood: string | null;
+  avatar_color: Parent['avatar_color'];
+}): Promise<Parent> {
+  const me = await getCurrentParentId();
+  const displayName = input.display_name.trim();
+  if (!displayName) throw new Error('Name is required');
+  const avatarInitials = displayName
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part[0]?.toUpperCase() ?? '')
+    .slice(0, 2)
+    .join('');
+  const { data, error } = await supabase
+    .from('parents')
+    .update({
+      display_name: displayName,
+      neighborhood: input.neighborhood?.trim() || null,
+      avatar_color: input.avatar_color,
+      avatar_initials: avatarInitials || '?',
+    })
+    .eq('id', me)
+    .select()
+    .single();
+  if (error) throw error;
+  return data as Parent;
+}
+
+async function saveMyKids(
+  kids: { id?: UUID; name: string; birth_year: number; interests: string[] }[],
+): Promise<Kid[]> {
+  const me = await getCurrentParentId();
+  const currentYear = new Date().getFullYear();
+  const normalized = kids.map((kid) => ({
+    ...kid,
+    name: kid.name.trim(),
+    interests: kid.interests.map((interest) => interest.trim()).filter(Boolean),
+  }));
+  if (normalized.some((kid) => !kid.name)) throw new Error('Each kid needs a name');
+  if (normalized.some((kid) => kid.birth_year < 2000 || kid.birth_year > currentYear)) {
+    throw new Error(`Birth years must be between 2000 and ${currentYear}`);
+  }
+
+  const { data: existing, error: existingError } = await supabase
+    .from('kids')
+    .select('id')
+    .eq('parent_id', me);
+  if (existingError) throw existingError;
+
+  const keptIds = normalized.flatMap((kid) => kid.id ? [kid.id] : []);
+  const removedIds = (existing ?? [])
+    .map((row) => (row as { id: UUID }).id)
+    .filter((id) => !keptIds.includes(id));
+  if (removedIds.length > 0) {
+    const { error } = await supabase
+      .from('kids')
+      .delete()
+      .eq('parent_id', me)
+      .in('id', removedIds);
+    if (error) throw error;
+  }
+
+  if (normalized.length === 0) return [];
+  const rows = normalized.map((kid) => ({
+    ...(kid.id ? { id: kid.id } : {}),
+    parent_id: me,
+    name: kid.name,
+    birth_year: kid.birth_year,
+    interests: kid.interests,
+  }));
+  const { data, error } = await supabase
+    .from('kids')
+    .upsert(rows)
+    .select();
+  if (error) throw error;
+  return (data ?? []) as Kid[];
 }
 
 // ─────── connections ───────
@@ -532,7 +642,23 @@ async function requestConnection(otherId: UUID): Promise<Connection> {
     .eq('parent_a', a)
     .eq('parent_b', b)
     .maybeSingle();
-  if (existing) return existing as Connection;
+  if (existing) {
+    const connection = existing as Connection;
+    if (connection.status !== 'declined') return connection;
+    const { data, error } = await supabase
+      .from('connections')
+      .update({
+        status: 'pending',
+        initiated_by: me,
+        responded_at: null,
+        created_at: new Date().toISOString(),
+      })
+      .eq('id', connection.id)
+      .select()
+      .single();
+    if (error) throw error;
+    return data as Connection;
+  }
 
   const { data, error } = await supabase
     .from('connections')
@@ -541,6 +667,34 @@ async function requestConnection(otherId: UUID): Promise<Connection> {
     .single();
   if (error) throw error;
   return data as Connection;
+}
+
+async function respondToConnection(
+  otherId: UUID,
+  status: Extract<ConnectionStatus, 'connected' | 'declined'>,
+): Promise<Connection> {
+  const me = await getCurrentParentId();
+  if (otherId === me) throw new Error('Cannot respond to yourself');
+  const [a, b] = me < otherId ? [me, otherId] : [otherId, me];
+  const { data, error } = await supabase
+    .from('connections')
+    .update({ status, responded_at: new Date().toISOString() })
+    .eq('parent_a', a)
+    .eq('parent_b', b)
+    .eq('status', 'pending')
+    .neq('initiated_by', me)
+    .select()
+    .single();
+  if (error) throw error;
+  return data as Connection;
+}
+
+async function acceptConnection(otherId: UUID): Promise<Connection> {
+  return respondToConnection(otherId, 'connected');
+}
+
+async function declineConnection(otherId: UUID): Promise<Connection> {
+  return respondToConnection(otherId, 'declined');
 }
 
 // ─────── calendar ───────
@@ -607,8 +761,12 @@ export const data = {
   createVenue,
   checkInAtVenue,
   getProfile,
+  updateMyProfile,
+  saveMyKids,
   getConnections,
   requestConnection,
+  acceptConnection,
+  declineConnection,
   createPost,
   deletePost,
   getCalendarEvents,

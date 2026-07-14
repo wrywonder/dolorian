@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
+import { useFocusEffect } from 'expo-router';
 import { colors, fonts } from '@/lib/constants';
 import { data } from '@/lib/data';
 import { Skeleton } from '@/components/ui';
@@ -29,9 +30,7 @@ export function ProfileBody({ parentId, onSettings }: ProfileBodyProps) {
     }
   }, [parentId]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useFocusEffect(useCallback(() => { load(); }, [load]));
 
   if (!view) {
     return (
@@ -47,7 +46,7 @@ export function ProfileBody({ parentId, onSettings }: ProfileBodyProps) {
 
   const isSelf = myId === parentId;
   const status = view.connectionStatus;
-  const pendingInitiatedByMe = status === 'pending';
+  const pendingInitiatedByMe = view.connectionInitiatedByMe === true;
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.cream }}>
@@ -82,6 +81,14 @@ export function ProfileBody({ parentId, onSettings }: ProfileBodyProps) {
                 await data.requestConnection(view.parent.id);
                 load();
               }}
+              onAccept={async () => {
+                await data.acceptConnection(view.parent.id);
+                load();
+              }}
+              onDecline={async () => {
+                await data.declineConnection(view.parent.id);
+                load();
+              }}
             />
           ) : null}
 
@@ -111,7 +118,7 @@ export function ProfileBody({ parentId, onSettings }: ProfileBodyProps) {
                   lineHeight: 21,
                 }}
               >
-                your crew's polaroids will live here —{'\n'}adding kids is coming soon
+                your crew's polaroids will live here —{'\n'}add them in settings
               </Text>
             </View>
           ) : null}
