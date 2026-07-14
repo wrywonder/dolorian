@@ -1,0 +1,33 @@
+appId: com.dolorian.app
+---
+# Smoke test: launch → OTP login → Buzz
+# Expected: RED until task 2 restores OTP email template
+# Test email: drew.rowny+dolorian@gmail.com
+# Fixed OTP:  123456  (configure in Supabase — see ORCHESTRATION.md task 1)
+
+- launchApp: {}
+- waitForAnimationToEnd:
+    timeout: 5000
+
+# --- Step 1: sign-in screen visible ---
+- assertVisible: "your village is waiting."
+
+# --- Step 2: enter test email ---
+- tapOn: "email address"
+- inputText: "drew.rowny+dolorian@gmail.com"
+- tapOn: "send login code →"
+
+# --- Step 3: OTP entry screen (Supabase call may take a moment) ---
+- extendedWaitUntil:
+    visible:
+      text: "check drew.rowny+dolorian@gmail.com for your login code"
+    timeout: 15000
+- tapOn: "paste code from email"
+- inputText: "123456"
+- tapOn: "let me in →"
+
+# --- Step 4: land on Buzz ---
+- extendedWaitUntil:
+    visible:
+      text: "buzz"
+    timeout: 10000

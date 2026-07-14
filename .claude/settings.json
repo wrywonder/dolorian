@@ -1,5 +1,27 @@
 {
   "enabledPlugins": {
     "expo@claude-plugins-official": true
+  },
+  "hooks": {
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "scripts/notify.sh needs-you \"Dolorian loop needs you\""
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "scripts/notify.sh fyi \"Session ended — check FYI log in ORCHESTRATION.md\""
+          }
+        ]
+      }
+    ]
   }
 }
