@@ -90,8 +90,10 @@ export function ProfileHeader({
         </Pressable>
       </View>
 
-      {/* Avatar + name block */}
-      <View style={{ position: 'absolute', left: 22, right: 22, top: 200 }}>
+      {/* Avatar + name block — anchored to the bottom so two-line names
+          never collide with the content sheet that overlaps this header
+          by 32px (ProfileBody's marginTop: -32). */}
+      <View style={{ position: 'absolute', left: 22, right: 22, bottom: 46 }}>
         <AvatarCircle
           initials={parent.avatar_initials}
           tone={tone}

@@ -28,11 +28,11 @@ type TabBarProps = {
 };
 
 /**
- * Floating pill tab bar — only the active tab shows its label inside a
- * terracotta capsule. Inactive tabs are icon-only in taupe. A twinkling
- * butter sparkle sits in the corner of the active pill.
+ * Floating pill tab bar — icon-only (screen headers carry the names).
+ * The active tab sits in a terracotta circle with a twinkling butter
+ * sparkle; inactive tabs are taupe outlines.
  *
- * Sits above the home indicator with a 30px bottom safe area pad.
+ * Sits above the home indicator with a bottom safe-area pad.
  */
 export function TabBar({ active, onChange, badges, style }: TabBarProps) {
   return (
@@ -43,8 +43,8 @@ export function TabBar({ active, onChange, badges, style }: TabBarProps) {
           left: 0,
           right: 0,
           bottom: 0,
-          paddingBottom: 30,
-          paddingTop: 10,
+          paddingBottom: 26,
+          paddingTop: 8,
         },
         style,
       ]}
@@ -52,10 +52,10 @@ export function TabBar({ active, onChange, badges, style }: TabBarProps) {
     >
       <View
         style={{
-          marginHorizontal: 14,
-          height: 70,
+          marginHorizontal: 44,
+          height: 58,
           backgroundColor: colors.surface,
-          borderRadius: 35,
+          borderRadius: 29,
           flexDirection: 'row',
           alignItems: 'center',
           paddingHorizontal: 8,
@@ -81,15 +81,18 @@ export function TabBar({ active, onChange, badges, style }: TabBarProps) {
                 Haptics.selectionAsync().catch(() => {});
                 onChange?.(tab.key);
               }}
+              accessibilityRole="tab"
+              accessibilityLabel={tab.label}
+              accessibilityState={{ selected: isActive }}
+              hitSlop={6}
               style={{
                 position: 'relative',
-                height: 56,
-                paddingHorizontal: isActive ? 18 : 14,
-                borderRadius: 28,
+                height: 46,
+                width: 46,
+                borderRadius: 23,
                 backgroundColor: isActive ? colors.terracotta : 'transparent',
-                flexDirection: 'row',
                 alignItems: 'center',
-                gap: 8,
+                justifyContent: 'center',
                 shadowColor: isActive ? '#924328' : 'transparent',
                 shadowOpacity: isActive ? 0.4 : 0,
                 shadowOffset: { width: 0, height: 3 },
@@ -99,30 +102,17 @@ export function TabBar({ active, onChange, badges, style }: TabBarProps) {
             >
               <Icon
                 name={isActive ? (`${tab.icon}.fill` as IconName) : tab.icon}
-                size={28}
+                size={25}
                 color={isActive ? colors.white : colors.taupe}
                 weight={2.1}
               />
-
-              {isActive ? (
-                <Text
-                  style={{
-                    fontFamily: fonts.sansExtra,
-                    fontSize: 14.5,
-                    color: colors.white,
-                    letterSpacing: -0.2,
-                  }}
-                >
-                  {tab.label}
-                </Text>
-              ) : null}
 
               {!isActive && badgeCount ? (
                 <View
                   style={{
                     position: 'absolute',
-                    top: 10,
-                    right: 8,
+                    top: 3,
+                    right: 3,
                     minWidth: 16,
                     height: 16,
                     paddingHorizontal: 4,
@@ -148,7 +138,7 @@ export function TabBar({ active, onChange, badges, style }: TabBarProps) {
 
               {isActive ? (
                 <View
-                  style={{ position: 'absolute', top: 6, right: 12 }}
+                  style={{ position: 'absolute', top: 1, right: 3 }}
                   pointerEvents="none"
                 >
                   <TwinkleSparkle size={10} color={colors.amberLight} delay={800} />

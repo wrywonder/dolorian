@@ -37,7 +37,13 @@
     "plugins": [
       "expo-router",
       "expo-splash-screen",
-      "expo-font"
+      "expo-font",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Dolorian uses your location to pin new spots and show your village what's nearby."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

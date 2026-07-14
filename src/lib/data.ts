@@ -331,6 +331,33 @@ async function setMyVisibility(visible: boolean): Promise<void> {
   if (error) throw error;
 }
 
+async function createVenue(input: {
+  name: string;
+  emoji: string | null;
+  venue_type: Venue['venue_type'];
+  lat: number;
+  lng: number;
+}): Promise<Venue> {
+  const { data, error } = await supabase
+    .from('venues')
+    .insert(input)
+    .select()
+    .single();
+  if (error) throw error;
+  return data as Venue;
+}
+
+async function checkInAtVenue(venueId: UUID): Promise<void> {
+  const me = await getCurrentParentId();
+  const { error } = await supabase
+    .from('parent_locations')
+    .upsert(
+      { parent_id: me, venue_id: venueId, visible: true, last_seen_at: new Date().toISOString() },
+      { onConflict: 'parent_id' },
+    );
+  if (error) throw error;
+}
+
 async function getMyVisibility(): Promise<boolean | null> {
   const me = await getCurrentParentId();
   const { data } = await supabase
@@ -468,6 +495,8 @@ export const data = {
   getWarmingUpVenues,
   setMyVisibility,
   getMyVisibility,
+  createVenue,
+  checkInAtVenue,
   getProfile,
   getConnections,
   requestConnection,
