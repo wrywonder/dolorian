@@ -565,6 +565,29 @@ async function createPost(input: Omit<Post, 'id' | 'created_at'>): Promise<Post>
   return data as Post;
 }
 
+async function deletePost(postId: UUID): Promise<void> {
+  // Grab the media path first so the storage object can be cleaned up.
+  const { data: post } = await supabase
+    .from('posts')
+    .select('media_path')
+    .eq('id', postId)
+    .maybeSingle();
+
+  // RLS (posts_write_own) guarantees only the author's delete succeeds.
+  const { error } = await supabase.from('posts').delete().eq('id', postId);
+  if (error) throw error;
+
+  // Best-effort image cleanup — the post row is already gone, so a
+  // failure here just leaves an orphaned object, never a broken feed.
+  const mediaPath = (post as { media_path: string | null } | null)?.media_path;
+  const marker = '/post-images/';
+  const idx = mediaPath?.indexOf(marker) ?? -1;
+  if (mediaPath && idx !== -1) {
+    const objectPath = mediaPath.slice(idx + marker.length);
+    await supabase.storage.from('post-images').remove([objectPath]);
+  }
+}
+
 // ─────── public interface ───────
 
 export const data = {
@@ -587,6 +610,7 @@ export const data = {
   getConnections,
   requestConnection,
   createPost,
+  deletePost,
   getCalendarEvents,
   toggleReaction,
   getPostComments,

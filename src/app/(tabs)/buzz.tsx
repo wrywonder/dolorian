@@ -132,7 +132,7 @@ export default function BuzzScreen() {
             item.kind === 'prompt' ? (
               <PromptCard resolved={item.resolved} onChanged={() => load(false)} />
             ) : (
-              <PostCard item={item.item} />
+              <PostCard item={item.item} onDeleted={() => load(false)} />
             )
           }
           contentContainerStyle={{
