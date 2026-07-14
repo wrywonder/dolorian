@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ScrollView, View } from 'react-native';
-import { colors } from '@/lib/constants';
+import { ScrollView, Text, View } from 'react-native';
+import { colors, fonts } from '@/lib/constants';
 import { data } from '@/lib/data';
+import { Skeleton } from '@/components/ui';
 import { useCurrentParentId } from '@/hooks/useCurrentParentId';
 import type { ProfileView, UUID } from '@/types';
 import { ActivityChipsRow } from './ActivityChipsRow';
@@ -20,15 +21,29 @@ export function ProfileBody({ parentId, onSettings }: ProfileBodyProps) {
   const [view, setView] = useState<ProfileView | null>(null);
 
   const load = useCallback(async () => {
-    const result = await data.getProfile(parentId);
-    setView(result);
+    try {
+      const result = await data.getProfile(parentId);
+      setView(result);
+    } catch (e) {
+      console.warn('profile load failed', e);
+    }
   }, [parentId]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  if (!view) return <View style={{ flex: 1, backgroundColor: colors.cream }} />;
+  if (!view) {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.cream }}>
+        <Skeleton width="100%" height={400} radius={0} />
+        <View style={{ paddingHorizontal: 18, paddingTop: 26, gap: 14 }}>
+          <Skeleton width="55%" height={22} radius={8} />
+          <Skeleton width="100%" height={120} radius={16} />
+        </View>
+      </View>
+    );
+  }
 
   const isSelf = myId === parentId;
   const status = view.connectionStatus;
@@ -70,9 +85,36 @@ export function ProfileBody({ parentId, onSettings }: ProfileBodyProps) {
             />
           ) : null}
 
-          <View style={{ marginTop: 22 }}>
-            <KidsGrid kids={view.kids} />
-          </View>
+          {view.kids.length > 0 ? (
+            <View style={{ marginTop: 22 }}>
+              <KidsGrid kids={view.kids} />
+            </View>
+          ) : isSelf ? (
+            <View
+              style={{
+                marginTop: 22,
+                borderWidth: 1.5,
+                borderColor: colors.rule,
+                borderStyle: 'dashed',
+                borderRadius: 16,
+                paddingVertical: 22,
+                paddingHorizontal: 18,
+                alignItems: 'center',
+              }}
+            >
+              <Text
+                style={{
+                  fontFamily: fonts.serif,
+                  fontSize: 15,
+                  color: colors.taupe,
+                  textAlign: 'center',
+                  lineHeight: 21,
+                }}
+              >
+                your crew's polaroids will live here —{'\n'}adding kids is coming soon
+              </Text>
+            </View>
+          ) : null}
 
           <ActivityChipsRow chips={view.activityChips} />
 
