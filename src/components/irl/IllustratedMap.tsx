@@ -166,24 +166,27 @@ const TREE_POSITIONS: [number, number][] = [
 ];
 
 /**
- * Hardcoded venue-id → relative position. These don't correspond to
- * lat/lng — they're hand-chosen to match the design composition.
- * Coordinates are returned in absolute pixels for the given canvas size.
+ * Venue-id → position on the illustrated canvas. Not lat/lng — the map
+ * is decorative. Each venue id hashes to a stable spot inside the safe
+ * area, so distinct venues spread out instead of stacking (real UUIDs
+ * can't be hardcoded ahead of time). Pins with no venue sit center.
  */
 function positionFor(
   venueId: string,
   size: { w: number; h: number },
 ): { x: number; y: number } {
-  // x, y are normalized 0–1 then scaled to the actual canvas.
-  const NORM: Record<string, { x: number; y: number }> = {
-    'venue-cesar-chavez-park': { x: 0.18, y: 0.34 },
-    'venue-studio-growlies': { x: 0.78, y: 0.24 },
-    'venue-albany-aquatic': { x: 0.86, y: 0.74 },
-    'venue-tilden-park': { x: 0.46, y: 0.78 },
-    unknown: { x: 0.5, y: 0.5 },
-  };
-  const n = NORM[venueId] ?? NORM.unknown ?? { x: 0.5, y: 0.5 };
-  return { x: n.x * size.w, y: n.y * size.h };
+  if (venueId === 'unknown') return { x: 0.5 * size.w, y: 0.46 * size.h };
+  let h1 = 0;
+  let h2 = 0;
+  for (let i = 0; i < venueId.length; i++) {
+    const c = venueId.charCodeAt(i);
+    h1 = (h1 * 31 + c) % 997;
+    h2 = (h2 * 37 + c) % 991;
+  }
+  // Keep pins away from the edges so avatars + label bubbles stay visible.
+  const x = 0.16 + (h1 / 997) * 0.68;
+  const y = 0.16 + (h2 / 991) * 0.62;
+  return { x: x * size.w, y: y * size.h };
 }
 
 type MapPinProps = {

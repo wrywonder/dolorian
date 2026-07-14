@@ -1,10 +1,13 @@
-import { ScrollView, Text, View } from 'react-native';
+import { Pressable, ScrollView, Text, View } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { colors, fonts, type AvatarTone } from '@/lib/constants';
 import { FadeOverlay, HandArrow, PhotoTile } from '@/components/ui';
 import type { Venue } from '@/types';
 
 type WarmingUpStripProps = {
   items: { venue: Venue; count: number }[];
+  /** Tapping a tile checks the user in at that venue. */
+  onPressVenue?: (venue: Venue) => void;
 };
 
 /**
@@ -12,7 +15,7 @@ type WarmingUpStripProps = {
  * Each tile fades to dark at the bottom so the emoji + name + count
  * read clearly. Three tiles fit roughly across an iPhone width.
  */
-export function WarmingUpStrip({ items }: WarmingUpStripProps) {
+export function WarmingUpStrip({ items, onPressVenue }: WarmingUpStripProps) {
   return (
     <View style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 }}>
@@ -34,8 +37,16 @@ export function WarmingUpStrip({ items }: WarmingUpStripProps) {
         contentContainerStyle={{ gap: 8, paddingRight: 16 }}
       >
         {items.slice(0, 6).map((c, i) => (
-          <View
+          <Pressable
             key={c.venue.id}
+            onPress={
+              onPressVenue
+                ? () => {
+                    Haptics.selectionAsync().catch(() => {});
+                    onPressVenue(c.venue);
+                  }
+                : undefined
+            }
             style={{
               width: 110,
               height: 86,
@@ -80,7 +91,7 @@ export function WarmingUpStrip({ items }: WarmingUpStripProps) {
                   : 'quiet'}
               </Text>
             </View>
-          </View>
+          </Pressable>
         ))}
       </ScrollView>
     </View>
