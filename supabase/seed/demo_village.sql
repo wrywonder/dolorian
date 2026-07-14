@@ -107,4 +107,19 @@ begin
      jsonb_build_object('activity_id', v_act_picnic, 'signal_from', v_maya),
      'pending')
   on conflict do nothing;
+
+  -- ─────── reactions + comments so the feed reads alive ───────
+  -- (requires 20260714010000_reactions_comments.sql to be applied)
+  insert into post_reactions (id, post_id, parent_id, emoji) values
+    ('de306000-0000-4000-8000-000000000001', 'de304000-0000-4000-8000-000000000001', v_jordan, '❤️'),
+    ('de306000-0000-4000-8000-000000000002', 'de304000-0000-4000-8000-000000000001', v_sam,    '❤️'),
+    ('de306000-0000-4000-8000-000000000003', 'de304000-0000-4000-8000-000000000003', v_maya,   '❤️')
+  on conflict do nothing;
+
+  insert into post_comments (id, post_id, author_id, body, created_at) values
+    ('de307000-0000-4000-8000-000000000001', 'de304000-0000-4000-8000-000000000002', v_maya,
+     'We love Dr. Osei on Valencia — gentle and fast with wiggly kids.', now() - interval '4 hours'),
+    ('de307000-0000-4000-8000-000000000002', 'de304000-0000-4000-8000-000000000003', v_jordan,
+     'GO NICO 🎉', now() - interval '20 hours')
+  on conflict do nothing;
 end $$;

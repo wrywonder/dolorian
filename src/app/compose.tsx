@@ -19,6 +19,7 @@ import { data } from '@/lib/data';
 import { uploadPostImage, type PickedImage } from '@/lib/storage';
 import { useCurrentParentId } from '@/hooks/useCurrentParentId';
 import { Icon, TerracottaButton } from '@/components/ui';
+import { DEFAULT_REACTION_EMOJI } from '@/types';
 
 type PostKind = 'photo' | 'question' | 'text';
 
@@ -28,11 +29,19 @@ const KINDS: { key: PostKind; label: string; icon: string }[] = [
   { key: 'question', label: 'question', icon: '✋' },
 ];
 
+/**
+ * Reaction emoji the author can feature on this post. A curated set for
+ * now — the schema stores plain text, so this can grow into a full
+ * picker (or custom uploaded emoji) without any data change.
+ */
+const REACTION_CHOICES = [DEFAULT_REACTION_EMOJI, '🎉', '😂', '🥹', '✨', '🙌', '🦖'] as const;
+
 export default function ComposeScreen() {
   const myId = useCurrentParentId();
   const [kind, setKind] = useState<PostKind>('photo');
   const [body, setBody] = useState('');
   const [image, setImage] = useState<PickedImage | null>(null);
+  const [reactionEmoji, setReactionEmoji] = useState<string>(DEFAULT_REACTION_EMOJI);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -75,6 +84,7 @@ export default function ComposeScreen() {
         story_id: null,
         location_share_mode: 'none',
         venue_id: null,
+        reaction_emoji: reactionEmoji === DEFAULT_REACTION_EMOJI ? null : reactionEmoji,
       });
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
@@ -241,6 +251,45 @@ export default function ComposeScreen() {
               borderBottomColor: colors.rule,
             }}
           />
+
+          {/* Reaction emoji picker — what friends react with on this post */}
+          <View style={{ marginTop: 20 }}>
+            <Text
+              style={{
+                fontFamily: fonts.monoBold,
+                fontSize: 10,
+                color: colors.taupe,
+                letterSpacing: 0.6,
+                marginBottom: 8,
+              }}
+            >
+              FRIENDS REACT WITH
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              {REACTION_CHOICES.map((e) => (
+                <Pressable
+                  key={e}
+                  onPress={() => {
+                    Haptics.selectionAsync().catch(() => {});
+                    setReactionEmoji(e);
+                  }}
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 18,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor:
+                      reactionEmoji === e ? 'rgba(201, 100, 66, 0.13)' : colors.surface,
+                    borderWidth: reactionEmoji === e ? 1.5 : 1,
+                    borderColor: reactionEmoji === e ? colors.terracotta : colors.rule,
+                  }}
+                >
+                  <Text style={{ fontSize: 17 }}>{e}</Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
 
           {error ? (
             <Text

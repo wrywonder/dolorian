@@ -8,6 +8,7 @@ import {
 } from '@/components/ui';
 import { useProfileLink } from '@/hooks/useProfileLink';
 import { stickerStamp } from '@/lib/format';
+import { PostEngagementRow } from './PostEngagementRow';
 import type { FeedItem } from '@/types';
 
 type PhotoPostCardProps = {
@@ -104,8 +105,7 @@ export function PhotoPostCard({ item }: PhotoPostCardProps) {
               </Text>
             ) : null}
           </View>
-          {/* Likes/comments will return here once reactions exist in the
-              schema — placeholder counts read as real activity. */}
+          <PostEngagementRow item={item} />
         </View>
       </View>
 

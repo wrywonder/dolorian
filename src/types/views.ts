@@ -7,7 +7,7 @@ import type { Activity, InteractionState } from './activities';
 import type { ConnectionStatus } from './connections';
 import type { Kid } from './kids';
 import type { Parent } from './parents';
-import type { Post } from './posts';
+import type { Post, PostComment } from './posts';
 import type { Prompt, PromptType } from './prompts';
 import type { ParentLocation, Venue } from './venues';
 
@@ -16,6 +16,17 @@ export type FeedItem = {
   author: Parent;
   activity: Activity | null;
   venue: Venue | null;
+  /** Total reactions on the post. */
+  reactionCount: number;
+  /** Whether the current user has reacted. */
+  myReacted: boolean;
+  commentCount: number;
+};
+
+export type CommentView = {
+  comment: PostComment;
+  /** Null when the commenter isn't visible to the viewer under RLS. */
+  author: Parent | null;
 };
 
 export type ActivitySocialProof = {

@@ -3,6 +3,7 @@ import { colors, fonts } from '@/lib/constants';
 import { AvatarCircle } from '@/components/ui';
 import { useProfileLink } from '@/hooks/useProfileLink';
 import { relativeShort } from '@/lib/format';
+import { PostEngagementRow } from './PostEngagementRow';
 import type { FeedItem } from '@/types';
 
 type QuestionPostCardProps = {
@@ -101,6 +102,10 @@ export function QuestionPostCard({ item }: QuestionPostCardProps) {
         >
           {post.body}
         </Text>
+
+        <View style={{ marginTop: 12 }}>
+          <PostEngagementRow item={item} />
+        </View>
 
         {/* speech-bubble tail (cream + 1px border) */}
         <View

@@ -12,6 +12,7 @@ import type {
   ActivityInteraction,
   ActivitySocialProof,
   CalendarEvent,
+  CommentView,
   Connection,
   ConnectionStatus,
   FeedItem,
@@ -20,6 +21,7 @@ import type {
   NearbyParent,
   Parent,
   Post,
+  PostComment,
   ProfileView,
   Prompt,
   PromptType,
@@ -64,18 +66,45 @@ async function getCurrentUser(): Promise<Parent> {
 // ─────── feed (Buzz tab) ───────
 
 async function getFeedPosts(): Promise<FeedItem[]> {
+  const me = await getCurrentParentId();
   const { data: posts, error } = await supabase
     .from('posts')
-    .select('*, author:parents!author_id(*), activity:activities(*), venue:venues(*)')
+    .select(
+      '*, author:parents!author_id(*), activity:activities(*), venue:venues(*), reactions:post_reactions(count), comments:post_comments(count)',
+    )
     .order('created_at', { ascending: false })
     .limit(50);
   if (error) throw error;
+
+  // Which of these posts the current user has reacted to, in one query.
+  const postIds = (posts ?? []).map((row: Record<string, unknown>) => row.id as string);
+  const myReactedIds = new Set<string>();
+  if (postIds.length > 0) {
+    const { data: mine } = await supabase
+      .from('post_reactions')
+      .select('post_id')
+      .eq('parent_id', me)
+      .in('post_id', postIds);
+    for (const r of mine ?? []) {
+      myReactedIds.add((r as Record<string, unknown>).post_id as string);
+    }
+  }
+
   return (posts ?? []).map((row: Record<string, unknown>) => ({
     post: extractPost(row),
     author: row.author as Parent,
     activity: (row.activity as Activity) ?? null,
     venue: (row.venue as Venue) ?? null,
+    reactionCount: embeddedCount(row.reactions),
+    myReacted: myReactedIds.has(row.id as string),
+    commentCount: embeddedCount(row.comments),
   }));
+}
+
+/** PostgREST count embeds come back as `[{ count: n }]`. */
+function embeddedCount(value: unknown): number {
+  const first = (value as { count?: number }[] | null)?.[0];
+  return first?.count ?? 0;
 }
 
 function extractPost(row: Record<string, unknown>): Post {
@@ -89,8 +118,65 @@ function extractPost(row: Record<string, unknown>): Post {
     story_id: (row.story_id as string) ?? null,
     location_share_mode: row.location_share_mode as Post['location_share_mode'],
     venue_id: (row.venue_id as string) ?? null,
+    reaction_emoji: (row.reaction_emoji as string) ?? null,
     created_at: row.created_at as string,
   };
+}
+
+// ─────── reactions & comments ───────
+
+/**
+ * Toggle the current user's reaction on a post. Returns true when the
+ * post is now reacted-to, false when the reaction was removed.
+ */
+async function toggleReaction(postId: UUID, emoji: string): Promise<boolean> {
+  const me = await getCurrentParentId();
+  const { data: existing } = await supabase
+    .from('post_reactions')
+    .select('id')
+    .eq('post_id', postId)
+    .eq('parent_id', me)
+    .maybeSingle();
+
+  if (existing) {
+    const { error } = await supabase
+      .from('post_reactions')
+      .delete()
+      .eq('id', (existing as { id: string }).id);
+    if (error) throw error;
+    return false;
+  }
+
+  const { error } = await supabase
+    .from('post_reactions')
+    .insert({ post_id: postId, parent_id: me, emoji });
+  if (error) throw error;
+  return true;
+}
+
+async function getPostComments(postId: UUID): Promise<CommentView[]> {
+  const { data, error } = await supabase
+    .from('post_comments')
+    .select('*, author:parents!author_id(*)')
+    .eq('post_id', postId)
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return (data ?? []).map((row: Record<string, unknown>) => {
+    const { author, ...comment } = row;
+    return {
+      comment: comment as PostComment,
+      // RLS can hide a commenter who isn't connected to the viewer.
+      author: (author as Parent) ?? null,
+    };
+  });
+}
+
+async function addComment(postId: UUID, body: string): Promise<void> {
+  const me = await getCurrentParentId();
+  const { error } = await supabase
+    .from('post_comments')
+    .insert({ post_id: postId, author_id: me, body });
+  if (error) throw error;
 }
 
 // ─────── prompts (Buzz prompt card slot) ───────
@@ -502,4 +588,7 @@ export const data = {
   requestConnection,
   createPost,
   getCalendarEvents,
+  toggleReaction,
+  getPostComments,
+  addComment,
 };
