@@ -7,29 +7,39 @@ export type PickedImage = {
   base64?: string | null;
 };
 
+function decodeImage(image: PickedImage): { body: ArrayBuffer; extension: 'png' | 'jpg'; contentType: string } {
+  const extension = image.uri.split('.').pop()?.toLowerCase() === 'png' ? 'png' : 'jpg';
+  const contentType = extension === 'png' ? 'image/png' : 'image/jpeg';
+  if (!image.base64) throw new Error('The selected image did not include upload data. Please choose it again.');
+  const binary = atob(image.base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
+  return { body: bytes.buffer as ArrayBuffer, extension, contentType };
+}
+
 export async function uploadPostImage(parentId: UUID, image: PickedImage): Promise<string> {
-  const ext = image.uri.split('.').pop()?.toLowerCase() === 'png' ? 'png' : 'jpg';
-  const contentType = ext === 'png' ? 'image/png' : 'image/jpeg';
-  const path = `${parentId}/${Date.now()}.${ext}`;
+  const decoded = decodeImage(image);
+  const path = `${parentId}/${Date.now()}.${decoded.extension}`;
 
   // React Native's fetch(file://).blob() hands supabase-js a Blob it
   // can't serialize — the upload "succeeds" with a zero-byte object.
   // Upload raw bytes decoded from the picker's base64 instead.
-  let body: ArrayBuffer;
-  if (image.base64) {
-    const bin = atob(image.base64);
-    const bytes = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-    body = bytes.buffer as ArrayBuffer;
-  } else {
-    body = await (await fetch(image.uri)).arrayBuffer();
-  }
-
   const { error } = await supabase.storage
     .from('post-images')
-    .upload(path, body, { contentType });
+    .upload(path, decoded.body, { contentType: decoded.contentType });
   if (error) throw error;
 
   const { data } = supabase.storage.from('post-images').getPublicUrl(path);
+  return data.publicUrl;
+}
+
+export async function uploadProfileImage(parentId: UUID, image: PickedImage): Promise<string> {
+  const decoded = decodeImage(image);
+  const path = `${parentId}/${Date.now()}.${decoded.extension}`;
+  const { error } = await supabase.storage
+    .from('profile-images')
+    .upload(path, decoded.body, { contentType: decoded.contentType });
+  if (error) throw error;
+  const { data } = supabase.storage.from('profile-images').getPublicUrl(path);
   return data.publicUrl;
 }

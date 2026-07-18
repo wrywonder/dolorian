@@ -121,6 +121,7 @@ export function CommentsSheet({ open, postId, onClose, onCommentAdded }: Comment
                   <AvatarCircle
                     initials={author?.avatar_initials ?? '?'}
                     tone={(author?.avatar_color ?? 'peach') as AvatarTone}
+                    imageUrl={author?.avatar_url}
                     size={30}
                   />
                   <View style={{ flex: 1 }}>

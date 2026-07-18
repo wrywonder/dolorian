@@ -95,6 +95,7 @@ function SingleStack({ parents, label, accent, bold = false, compact = false }: 
             key={p.id}
             initials=""
             tone={p.avatar_color}
+            imageUrl={p.avatar_url}
             size={size}
             onPress={() => openProfile(p.id)}
             style={{

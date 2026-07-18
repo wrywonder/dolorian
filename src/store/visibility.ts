@@ -1,42 +1,39 @@
 import { create } from 'zustand';
 import { data } from '@/lib/data';
+import type { VisibilityMode } from '@/types';
 
-/**
- * Single source of truth for "out & about" visibility. Both the Buzz
- * header and the IRL header read the same store, so toggling in one
- * updates the other immediately.
- *
- * `hydrate()` pulls the persisted value from parent_locations once per
- * sign-in (called from the tabs layout); toggles write through
- * optimistically and roll back if the write fails.
- */
 type VisibilityState = {
+  mode: VisibilityMode;
   visible: boolean;
   hydrate: () => Promise<void>;
-  setVisible: (next: boolean) => Promise<void>;
+  setMode: (next: VisibilityMode) => Promise<void>;
   toggle: () => Promise<void>;
 };
 
 export const useVisibilityStore = create<VisibilityState>((set, get) => ({
-  visible: true,
+  mode: 'auto',
+  visible: false,
   async hydrate() {
     try {
       const persisted = await data.getMyVisibility();
-      if (persisted !== null) set({ visible: persisted });
+      set(persisted);
     } catch {
-      // not signed in yet or offline — keep the default until next toggle
+      // Keep the privacy-safe local default until auth/network is ready.
     }
   },
-  async setVisible(next) {
-    const prev = get().visible;
-    set({ visible: next });
+  async setMode(next) {
+    const previous = { mode: get().mode, visible: get().visible };
+    set({ mode: next, visible: next === 'disabled' ? false : get().visible });
     try {
-      await data.setMyVisibility(next);
-    } catch {
-      set({ visible: prev });
+      await data.setVisibilityMode(next);
+      await get().hydrate();
+    } catch (error) {
+      set(previous);
+      throw error;
     }
   },
   async toggle() {
-    await get().setVisible(!get().visible);
+    const next: VisibilityMode = get().mode === 'disabled' ? 'auto' : 'disabled';
+    await get().setMode(next);
   },
 }));

@@ -11,10 +11,12 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { AvatarCircle, Icon, TerracottaButton } from '@/components/ui';
+import * as ImagePicker from 'expo-image-picker';
+import { AvatarCircle, Icon, PhotoAvatar, TerracottaButton } from '@/components/ui';
 import { colors, fonts, type AvatarTone } from '@/lib/constants';
 import { data } from '@/lib/data';
 import { useCurrentParentId } from '@/hooks/useCurrentParentId';
+import { uploadProfileImage, type PickedImage } from '@/lib/storage';
 import type { Kid, UUID } from '@/types';
 
 const TONES: AvatarTone[] = ['peach', 'golden', 'sage', 'mauve', 'slate', 'rose', 'butter'];
@@ -42,6 +44,10 @@ export default function SettingsScreen() {
   const [displayName, setDisplayName] = useState('');
   const [neighborhood, setNeighborhood] = useState('');
   const [tone, setTone] = useState<AvatarTone>('peach');
+  const [background, setBackground] = useState<AvatarTone>('peach');
+  const [bio, setBio] = useState('');
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [pickedPhoto, setPickedPhoto] = useState<PickedImage | null>(null);
   const [kids, setKids] = useState<KidDraft[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -56,6 +62,9 @@ export default function SettingsScreen() {
         setDisplayName(profile.parent.display_name);
         setNeighborhood(profile.parent.neighborhood ?? '');
         setTone(profile.parent.avatar_color);
+        setBackground(profile.parent.profile_background);
+        setBio(profile.parent.bio ?? '');
+        setPhotoUrl(profile.parent.avatar_url);
         setKids(profile.kids.map((kid) => kidDraft(kid)));
       })
       .catch((cause: unknown) => {
@@ -96,10 +105,16 @@ export default function SettingsScreen() {
     setSaving(true);
     setError(null);
     try {
+      const uploadedPhotoUrl = pickedPhoto && myId
+        ? await uploadProfileImage(myId, pickedPhoto)
+        : photoUrl;
       await data.updateMyProfile({
         display_name: displayName,
         neighborhood: neighborhood || null,
         avatar_color: tone,
+        avatar_url: uploadedPhotoUrl,
+        bio,
+        profile_background: background,
       });
       await data.saveMyKids(parsedKids);
       router.back();
@@ -108,6 +123,26 @@ export default function SettingsScreen() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const choosePhoto = async () => {
+    setError(null);
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      setError('Allow photo access to choose a profile picture.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.82,
+      base64: true,
+    });
+    if (result.canceled) return;
+    const asset = result.assets[0];
+    if (!asset) return;
+    setPickedPhoto({ uri: asset.uri, base64: asset.base64 });
   };
 
   return (
@@ -153,8 +188,23 @@ export default function SettingsScreen() {
             </Text>
 
             <View style={{ alignItems: 'center', marginBottom: 16 }}>
-              <AvatarCircle initials={initials || '?'} tone={tone} size={78} />
+              <PhotoAvatar
+                tone={tone}
+                imageUrl={pickedPhoto?.uri ?? photoUrl}
+                size={92}
+                ringWidth={4}
+                ringColor={colors.surface}
+                onPress={choosePhoto}
+              />
+              <Pressable onPress={choosePhoto} style={{ marginTop: -14, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 18, backgroundColor: colors.terracotta }}>
+                <Text style={{ fontFamily: fonts.sansExtra, fontSize: 11, color: colors.white }}>
+                  {photoUrl || pickedPhoto ? 'change photo' : '+ add photo'}
+                </Text>
+              </Pressable>
             </View>
+            <Text style={{ fontFamily: fonts.monoBold, fontSize: 9.5, letterSpacing: 0.6, color: colors.taupe, textAlign: 'center', marginBottom: 8 }}>
+              AVATAR COLOR
+            </Text>
             <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 9, marginBottom: 28 }}>
               {TONES.map((item) => (
                 <AvatarCircle
@@ -170,6 +220,23 @@ export default function SettingsScreen() {
 
             <Field label="YOUR NAME" value={displayName} onChangeText={setDisplayName} placeholder="Your name" />
             <Field label="NEIGHBORHOOD" value={neighborhood} onChangeText={setNeighborhood} placeholder="e.g. North Berkeley" />
+            <Field label="ABOUT YOU" value={bio} onChangeText={setBio} placeholder="What should your village know about you?" multiline />
+
+            <Text style={{ fontFamily: fonts.monoBold, fontSize: 9.5, letterSpacing: 0.6, color: colors.taupe, marginBottom: 8 }}>
+              PROFILE BACKGROUND
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 9, marginBottom: 28 }}>
+              {TONES.map((item) => (
+                <AvatarCircle
+                  key={`background-${item}`}
+                  initials=""
+                  tone={item}
+                  size={36}
+                  onPress={() => setBackground(item)}
+                  style={item === background ? { borderWidth: 2.5, borderColor: colors.dark } : {}}
+                />
+              ))}
+            </View>
 
             <View style={{ height: 1, backgroundColor: colors.rule, marginVertical: 28 }} />
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
@@ -249,6 +316,7 @@ function Field({
   onChangeText: (value: string) => void;
   placeholder: string;
   keyboardType?: 'default' | 'number-pad';
+  multiline?: boolean;
 }) {
   return (
     <View style={{ marginBottom: compact ? 14 : 20 }}>
@@ -265,6 +333,8 @@ function Field({
           borderBottomWidth: 1.5,
           borderBottomColor: colors.rule,
           paddingVertical: 7,
+          minHeight: inputProps.multiline ? 74 : undefined,
+          textAlignVertical: inputProps.multiline ? 'top' : 'center',
         }}
       />
     </View>

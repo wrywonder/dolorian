@@ -1,3 +1,4 @@
+import { Image } from 'expo-image';
 import { Pressable, Text, View, type ViewStyle } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { colors, fonts, type AvatarTone } from '@/lib/constants';
@@ -11,6 +12,7 @@ type PhotoAvatarProps = {
   ringColor?: string;
   /** Optional mono label inside the circle (matches the prototype "PHOTO" overlays). */
   label?: string;
+  imageUrl?: string | null;
   /** When provided, becomes pressable with selection haptic. */
   onPress?: () => void;
   style?: ViewStyle;
@@ -29,6 +31,7 @@ export function PhotoAvatar({
   ringWidth = 3,
   ringColor = colors.white,
   label,
+  imageUrl,
   onPress,
   style,
 }: PhotoAvatarProps) {
@@ -47,7 +50,11 @@ export function PhotoAvatar({
         style,
       ]}
     >
-      <StripePattern tone={tone} radius={size / 2} />
+      {imageUrl ? (
+        <Image source={{ uri: imageUrl }} contentFit="cover" style={{ width: '100%', height: '100%' }} />
+      ) : (
+        <StripePattern tone={tone} radius={size / 2} />
+      )}
       {label ? (
         <View
           style={{

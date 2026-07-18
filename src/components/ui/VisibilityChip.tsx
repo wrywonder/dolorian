@@ -4,12 +4,14 @@ import { colors, fonts, type AvatarTone } from '@/lib/constants';
 import { AvatarCircle } from './AvatarCircle';
 import { PulseDot } from './PulseDot';
 import { TwinkleSparkle } from './TwinkleSparkle';
+import type { VisibilityMode } from '@/types';
 
 type VisibilityChipProps = {
   /** Drives the dot animation + text tone. When false, chip reads "tucked away". */
   visible?: boolean;
+  mode?: VisibilityMode;
   /** Small avatar stack of other parents currently visible. */
-  visibleParents?: { initials: string; tone: AvatarTone }[];
+  visibleParents?: { initials: string; tone: AvatarTone; imageUrl?: string | null }[];
   onPress?: () => void;
   style?: ViewStyle;
 };
@@ -21,10 +23,13 @@ type VisibilityChipProps = {
  */
 export function VisibilityChip({
   visible = true,
+  mode,
   visibleParents = [],
   onPress,
   style,
 }: VisibilityChipProps) {
+  const resolvedMode = mode ?? (visible ? 'on' : 'disabled');
+  const active = resolvedMode !== 'disabled';
   const handlePress = () => {
     if (!onPress) return;
     Haptics.selectionAsync().catch(() => {});
@@ -44,13 +49,13 @@ export function VisibilityChip({
           borderRadius: 999,
           backgroundColor: colors.surface,
           borderWidth: 1,
-          borderColor: visible ? colors.rule : '#E5DDD0',
+          borderColor: active ? colors.rule : '#E5DDD0',
           shadowColor: '#B48C28',
-          shadowOpacity: visible ? 0.1 : 0,
+          shadowOpacity: active ? 0.1 : 0,
           shadowOffset: { width: 0, height: 1 },
           shadowRadius: 3,
           alignSelf: 'flex-start',
-          opacity: visible ? 1 : 0.78,
+          opacity: active ? 1 : 0.78,
         },
         style,
       ]}
@@ -74,14 +79,14 @@ export function VisibilityChip({
         style={{
           fontFamily: fonts.sansExtra,
           fontSize: 12,
-          color: visible ? '#8A6B22' : colors.taupe,
+          color: active ? '#8A6B22' : colors.taupe,
           letterSpacing: 0.1,
         }}
       >
-        {visible ? 'out & about' : 'off the map'}
+        {resolvedMode === 'auto' ? 'out & about · auto' : resolvedMode === 'on' ? 'out & about · on' : 'off the map'}
       </Text>
 
-      {visible && visibleParents.length > 0 ? (
+      {active && visibleParents.length > 0 ? (
         <View
           style={{
             flexDirection: 'row',
@@ -95,6 +100,7 @@ export function VisibilityChip({
               key={`${p.initials}-${i}`}
               initials=""
               tone={p.tone}
+              imageUrl={p.imageUrl}
               size={18}
               style={{
                 marginLeft: i ? -6 : 0,
@@ -106,7 +112,7 @@ export function VisibilityChip({
         </View>
       ) : null}
 
-      {visible ? (
+      {active ? (
         <View style={{ position: 'absolute', top: -3, right: -2 }} pointerEvents="none">
           <TwinkleSparkle size={9} color={colors.golden} />
         </View>

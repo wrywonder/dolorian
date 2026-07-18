@@ -16,7 +16,8 @@ import {
   SpaceGrotesk_700Bold,
 } from '@expo-google-fonts/space-grotesk';
 import * as SplashScreen from 'expo-splash-screen';
-import { Stack } from 'expo-router';
+import { router, Stack } from 'expo-router';
+import * as Notifications from 'expo-notifications';
 import { StatusBar } from 'expo-status-bar';
 import { Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -24,6 +25,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import type { Session } from '@supabase/supabase-js';
 import { supabase, supabaseConfigError } from '@/lib/supabase';
 import { colors, fonts } from '@/lib/constants';
+import '@/lib/hangout-geofencing';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -65,6 +67,23 @@ export default function RootLayout() {
     });
     return () => subscription.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (!session) return;
+    const openNotification = (notification: Notifications.Notification) => {
+      const url = notification.request.content.data.url;
+      if (url === 'dolorian://irl') router.push('/irl');
+    };
+    const last = Notifications.getLastNotificationResponse();
+    if (last?.notification) {
+      openNotification(last.notification);
+      Notifications.clearLastNotificationResponseAsync().catch(() => {});
+    }
+    const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
+      openNotification(response.notification);
+    });
+    return () => subscription.remove();
+  }, [session]);
 
   const ready = (fontsLoaded || fontError) && session !== undefined;
 

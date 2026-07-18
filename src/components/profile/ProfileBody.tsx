@@ -92,6 +92,12 @@ export function ProfileBody({ parentId, onSettings }: ProfileBodyProps) {
             />
           ) : null}
 
+          {view.parent.bio ? (
+            <Text selectable style={{ fontFamily: fonts.sans, fontSize: 14, lineHeight: 22, color: colors.brownMid, paddingTop: 18 }}>
+              {view.parent.bio}
+            </Text>
+          ) : null}
+
           {view.kids.length > 0 ? (
             <View style={{ marginTop: 22 }}>
               <KidsGrid kids={view.kids} />

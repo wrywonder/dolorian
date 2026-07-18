@@ -14,8 +14,10 @@ import type {
   CalendarEvent,
   CommentView,
   Connection,
+  ConnectionView,
   ConnectionStatus,
   FeedItem,
+  HangoutSpot,
   InteractionState,
   Kid,
   NearbyParent,
@@ -28,6 +30,7 @@ import type {
   ResolvedPrompt,
   UUID,
   Venue,
+  VisibilityMode,
 } from '@/types';
 
 const LOCATION_VISIBILITY_MS = 2 * 60 * 60 * 1000;
@@ -357,7 +360,7 @@ async function getNearbyParents(): Promise<NearbyParent[]> {
   const { data, error } = await supabase
     .from('parent_locations')
     .select('*, parent:parents(*), venue:venues(*)')
-    .eq('visible', true)
+    .or(`visible.eq.true,auto_share_at.lte.${now}`)
     .gt('expires_at', now);
   if (error || !data) return [];
   return data.map((row: Record<string, unknown>) => ({
@@ -369,6 +372,7 @@ async function getNearbyParents(): Promise<NearbyParent[]> {
       visible: row.visible as boolean,
       last_seen_at: row.last_seen_at as string,
       expires_at: (row.expires_at as string) ?? null,
+      auto_share_at: (row.auto_share_at as string) ?? null,
     },
     venue: (row.venue as Venue) ?? null,
   }));
@@ -380,7 +384,7 @@ async function getVisibleConnectionAvatars(): Promise<Parent[]> {
   const { data, error } = await supabase
     .from('parent_locations')
     .select('parent:parents(*)')
-    .eq('visible', true)
+    .or(`visible.eq.true,auto_share_at.lte.${now}`)
     .gt('expires_at', now)
     .neq('parent_id', me);
   if (error || !data) return [];
@@ -399,7 +403,7 @@ async function getWarmingUpVenues(): Promise<{ venue: Venue; count: number }[]> 
     supabase
       .from('parent_locations')
       .select('venue_id')
-      .eq('visible', true)
+      .or(`visible.eq.true,auto_share_at.lte.${now}`)
       .gt('expires_at', now)
       .neq('parent_id', me),
   ]);
@@ -416,23 +420,39 @@ async function getWarmingUpVenues(): Promise<{ venue: Venue; count: number }[]> 
     .sort((a, b) => b.count - a.count);
 }
 
-async function setMyVisibility(visible: boolean): Promise<void> {
+async function setVisibilityMode(mode: VisibilityMode): Promise<void> {
   const me = await getCurrentParentId();
   const now = new Date();
-  // parent_locations has a unique constraint on parent_id, so a single
-  // upsert replaces the previous select-then-insert/update round trips.
-  const { error } = await supabase
-    .from('parent_locations')
-    .upsert(
-      {
-        parent_id: me,
-        visible,
-        last_seen_at: now.toISOString(),
-        expires_at: visible ? locationExpiry(now) : now.toISOString(),
-      },
-      { onConflict: 'parent_id' },
-    );
+  const { error } = await supabase.from('parents').update({ visibility_mode: mode }).eq('id', me);
   if (error) throw error;
+
+  if (mode === 'disabled') {
+    const { error: locationError } = await supabase.from('parent_locations').upsert({
+      parent_id: me,
+      venue_id: null,
+      visible: false,
+      auto_share_at: null,
+      last_seen_at: now.toISOString(),
+      expires_at: now.toISOString(),
+    }, { onConflict: 'parent_id' });
+    if (locationError) throw locationError;
+  } else if (mode === 'on') {
+    const { data: current } = await supabase
+      .from('parent_locations')
+      .select('venue_id')
+      .eq('parent_id', me)
+      .maybeSingle();
+    if (current?.venue_id) {
+      const { error: locationError } = await supabase.from('parent_locations').upsert({
+        parent_id: me,
+        visible: true,
+        auto_share_at: null,
+        last_seen_at: now.toISOString(),
+        expires_at: locationExpiry(now),
+      }, { onConflict: 'parent_id' });
+      if (locationError) throw locationError;
+    }
+  }
 }
 
 async function createVenue(input: {
@@ -461,6 +481,7 @@ async function checkInAtVenue(venueId: UUID): Promise<void> {
         parent_id: me,
         venue_id: venueId,
         visible: true,
+        auto_share_at: null,
         last_seen_at: now.toISOString(),
         expires_at: locationExpiry(now),
       },
@@ -469,16 +490,133 @@ async function checkInAtVenue(venueId: UUID): Promise<void> {
   if (error) throw error;
 }
 
-async function getMyVisibility(): Promise<boolean | null> {
+async function beginHangoutVisit(venueId: UUID): Promise<VisibilityMode> {
   const me = await getCurrentParentId();
-  const { data } = await supabase
-    .from('parent_locations')
-    .select('visible, expires_at')
-    .eq('parent_id', me)
-    .maybeSingle();
-  if (!data) return null;
-  const expiresAt = data.expires_at as string | null;
-  return Boolean(data.visible && expiresAt && new Date(expiresAt).getTime() > Date.now());
+  const { data: parent, error: parentError } = await supabase
+    .from('parents')
+    .select('visibility_mode')
+    .eq('id', me)
+    .single();
+  if (parentError || !parent) throw parentError ?? new Error('Profile not found');
+  const mode = parent.visibility_mode as VisibilityMode;
+  if (mode === 'disabled') return mode;
+
+  const now = new Date();
+  const { error } = await supabase.from('parent_locations').upsert({
+    parent_id: me,
+    venue_id: venueId,
+    visible: mode === 'on',
+    auto_share_at: mode === 'auto'
+      ? new Date(now.getTime() + 5 * 60 * 1000).toISOString()
+      : null,
+    last_seen_at: now.toISOString(),
+    expires_at: locationExpiry(now),
+  }, { onConflict: 'parent_id' });
+  if (error) throw error;
+  return mode;
+}
+
+async function endHangoutVisit(venueId: UUID): Promise<void> {
+  const me = await getCurrentParentId();
+  const now = new Date().toISOString();
+  const { error } = await supabase.from('parent_locations').update({
+    venue_id: null,
+    visible: false,
+    auto_share_at: null,
+    last_seen_at: now,
+    expires_at: now,
+  }).eq('parent_id', me).eq('venue_id', venueId);
+  if (error) throw error;
+}
+
+async function getMyVisibility(): Promise<{ mode: VisibilityMode; visible: boolean }> {
+  const me = await getCurrentParentId();
+  const [{ data: parent, error }, { data: location }] = await Promise.all([
+    supabase.from('parents').select('visibility_mode').eq('id', me).single(),
+    supabase.from('parent_locations').select('visible, auto_share_at, expires_at').eq('parent_id', me).maybeSingle(),
+  ]);
+  if (error || !parent) throw error ?? new Error('Profile not found');
+  const expiresAt = (location?.expires_at as string | null) ?? null;
+  const autoShareAt = (location?.auto_share_at as string | null) ?? null;
+  const active = Boolean(expiresAt && new Date(expiresAt).getTime() > Date.now());
+  return {
+    mode: parent.visibility_mode as VisibilityMode,
+    visible: active && Boolean(location?.visible || (autoShareAt && new Date(autoShareAt).getTime() <= Date.now())),
+  };
+}
+
+async function getHangoutSpots(): Promise<HangoutSpot[]> {
+  const me = await getCurrentParentId();
+  const [{ data: venues, error: venueError }, { data: rows, error: rowError }, { data: parents }] = await Promise.all([
+    supabase.from('venues').select('*'),
+    supabase.from('parent_hangout_spots').select('id, parent_id, venue_id, enabled, venue:venues(*)'),
+    supabase.from('parents').select('id, display_name'),
+  ]);
+  if (venueError) throw venueError;
+  if (rowError) throw rowError;
+
+  const names = new Map((parents ?? []).map((parent) => [parent.id as UUID, parent.display_name as string]));
+  const ownOverrides = new Map<UUID, { id: UUID; enabled: boolean }>();
+  for (const row of rows ?? []) {
+    if (row.parent_id === me) ownOverrides.set(row.venue_id as UUID, { id: row.id as UUID, enabled: Boolean(row.enabled) });
+  }
+
+  const byVenue = new Map<UUID, HangoutSpot>();
+  for (const venue of (venues ?? []) as Venue[]) {
+    const own = ownOverrides.get(venue.id);
+    if (!venue.default_hangout && !own) continue;
+    byVenue.set(venue.id, {
+      id: own?.id ?? null,
+      parent_id: own ? me : null,
+      venue,
+      enabled: own?.enabled ?? venue.default_hangout,
+      is_default: venue.default_hangout,
+      is_mine: own?.enabled ?? venue.default_hangout,
+      suggested_by: [],
+    });
+  }
+
+  for (const raw of rows ?? []) {
+    if (!raw.enabled) continue;
+    const venue = raw.venue as unknown as Venue | null;
+    if (!venue) continue;
+    const parentId = raw.parent_id as UUID;
+    const existing = byVenue.get(venue.id) ?? {
+      id: null,
+      parent_id: null,
+      venue,
+      enabled: false,
+      is_default: venue.default_hangout,
+      is_mine: false,
+      suggested_by: [],
+    };
+    if (parentId === me) {
+      existing.id = raw.id as UUID;
+      existing.parent_id = me;
+      existing.enabled = true;
+      existing.is_mine = true;
+    } else {
+      const name = names.get(parentId);
+      if (name && !existing.suggested_by.includes(name)) existing.suggested_by.push(name);
+    }
+    byVenue.set(venue.id, existing);
+  }
+
+  return [...byVenue.values()].sort((a, b) => {
+    if (a.is_mine !== b.is_mine) return a.is_mine ? -1 : 1;
+    if (a.is_default !== b.is_default) return a.is_default ? -1 : 1;
+    return a.venue.name.localeCompare(b.venue.name);
+  });
+}
+
+async function setHangoutSpot(venueId: UUID, enabled: boolean): Promise<void> {
+  const me = await getCurrentParentId();
+  const { error } = await supabase.from('parent_hangout_spots').upsert({
+    parent_id: me,
+    venue_id: venueId,
+    enabled,
+  }, { onConflict: 'parent_id,venue_id' });
+  if (error) throw error;
 }
 
 // ─────── profile (You tab + profile/[id]) ───────
@@ -546,6 +684,9 @@ async function updateMyProfile(input: {
   display_name: string;
   neighborhood: string | null;
   avatar_color: Parent['avatar_color'];
+  avatar_url: string | null;
+  bio: string | null;
+  profile_background: Parent['profile_background'];
 }): Promise<Parent> {
   const me = await getCurrentParentId();
   const displayName = input.display_name.trim();
@@ -563,6 +704,9 @@ async function updateMyProfile(input: {
       neighborhood: input.neighborhood?.trim() || null,
       avatar_color: input.avatar_color,
       avatar_initials: avatarInitials || '?',
+      avatar_url: input.avatar_url,
+      bio: input.bio?.trim() || null,
+      profile_background: input.profile_background,
     })
     .eq('id', me)
     .select()
@@ -631,6 +775,29 @@ async function getConnections(): Promise<Connection[]> {
   return (data ?? []) as Connection[];
 }
 
+async function getConnectionViews(): Promise<ConnectionView[]> {
+  const me = await getCurrentParentId();
+  const { data: rows, error } = await supabase
+    .from('connections')
+    .select('*, parentA:parents!parent_a(*), parentB:parents!parent_b(*)')
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return (rows ?? []).flatMap((row: Record<string, unknown>) => {
+    const connection: Connection = {
+      id: row.id as UUID,
+      parent_a: row.parent_a as UUID,
+      parent_b: row.parent_b as UUID,
+      status: row.status as ConnectionStatus,
+      initiated_by: row.initiated_by as UUID,
+      created_at: row.created_at as string,
+      responded_at: (row.responded_at as string) ?? null,
+    };
+    const parent = (connection.parent_a === me ? row.parentB : row.parentA) as Parent | null;
+    if (!parent) return [];
+    return [{ connection, parent, incoming: connection.status === 'pending' && connection.initiated_by !== me }];
+  });
+}
+
 async function requestConnection(otherId: UUID): Promise<Connection> {
   const me = await getCurrentParentId();
   if (otherId === me) throw new Error('Cannot connect to self');
@@ -697,6 +864,26 @@ async function declineConnection(otherId: UUID): Promise<Connection> {
   return respondToConnection(otherId, 'declined');
 }
 
+async function removeConnection(otherId: UUID): Promise<void> {
+  const me = await getCurrentParentId();
+  const [a, b] = me < otherId ? [me, otherId] : [otherId, me];
+  const { error } = await supabase.from('connections').delete().eq('parent_a', a).eq('parent_b', b);
+  if (error) throw error;
+}
+
+async function blockConnection(otherId: UUID): Promise<void> {
+  const me = await getCurrentParentId();
+  const [a, b] = me < otherId ? [me, otherId] : [otherId, me];
+  const { data: existing } = await supabase.from('connections').select('id').eq('parent_a', a).eq('parent_b', b).maybeSingle();
+  if (existing) {
+    const { error } = await supabase.from('connections').update({ status: 'blocked', responded_at: new Date().toISOString() }).eq('id', existing.id);
+    if (error) throw error;
+    return;
+  }
+  const { error } = await supabase.from('connections').insert({ parent_a: a, parent_b: b, status: 'blocked', initiated_by: me, responded_at: new Date().toISOString() });
+  if (error) throw error;
+}
+
 // ─────── calendar ───────
 
 async function getCalendarEvents(): Promise<CalendarEvent[]> {
@@ -756,17 +943,24 @@ export const data = {
   getNearbyParents,
   getVisibleConnectionAvatars,
   getWarmingUpVenues,
-  setMyVisibility,
+  setVisibilityMode,
   getMyVisibility,
+  beginHangoutVisit,
+  endHangoutVisit,
+  getHangoutSpots,
+  setHangoutSpot,
   createVenue,
   checkInAtVenue,
   getProfile,
   updateMyProfile,
   saveMyKids,
   getConnections,
+  getConnectionViews,
   requestConnection,
   acceptConnection,
   declineConnection,
+  removeConnection,
+  blockConnection,
   createPost,
   deletePost,
   getCalendarEvents,

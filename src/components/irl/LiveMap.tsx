@@ -160,6 +160,7 @@ function LiveMapContent({ pins, venues, meId }: LiveMapProps) {
                       <PhotoAvatar
                         key={pin.parent.id}
                         tone={pin.parent.avatar_color as AvatarTone}
+                        imageUrl={pin.parent.avatar_url}
                         size={pin.parent.id === meId ? 46 : 42}
                         ringWidth={3}
                         ringColor={pin.parent.id === meId ? colors.terracotta : colors.white}

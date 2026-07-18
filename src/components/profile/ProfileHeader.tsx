@@ -28,7 +28,7 @@ export function ProfileHeader({
   isSelf,
   onSettingsPress,
 }: ProfileHeaderProps) {
-  const tone: AvatarTone = parent.avatar_color;
+  const tone: AvatarTone = parent.profile_background ?? parent.avatar_color;
   const firstName = parent.display_name.split(' ')[0] ?? parent.display_name;
   const lastName = parent.display_name.split(' ').slice(1).join(' ');
 
@@ -96,7 +96,8 @@ export function ProfileHeader({
       <View style={{ position: 'absolute', left: 22, right: 22, bottom: 46 }}>
         <AvatarCircle
           initials={parent.avatar_initials}
-          tone={tone}
+          tone={parent.avatar_color}
+          imageUrl={parent.avatar_url}
           size={92}
           ring={colors.white}
           style={{

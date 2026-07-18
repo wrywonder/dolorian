@@ -4,7 +4,7 @@
  */
 
 import type { Activity, InteractionState } from './activities';
-import type { ConnectionStatus } from './connections';
+import type { Connection, ConnectionStatus } from './connections';
 import type { Kid } from './kids';
 import type { Parent } from './parents';
 import type { Post, PostComment } from './posts';
@@ -57,6 +57,12 @@ export type ProfileView = {
   mutualFriendCount: number;
   /** Activity chips — venue names from activities they've engaged with. */
   activityChips: string[];
+};
+
+export type ConnectionView = {
+  connection: Connection;
+  parent: Parent;
+  incoming: boolean;
 };
 
 export type ResolvedPrompt<T extends PromptType = PromptType> = {
