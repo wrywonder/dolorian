@@ -167,7 +167,7 @@ function Section({ title, eyebrow, children }: { title: string; eyebrow: string;
 }
 
 function ConnectionRow({ item, actions, onPress }: { item: ConnectionView; actions: React.ReactNode; onPress?: () => void }) {
-  return <Pressable onPress={onPress} style={{ minHeight: 68, flexDirection: 'row', alignItems: 'center', gap: 11, paddingHorizontal: 13, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.rule }}><AvatarCircle initials={item.parent.avatar_initials} tone={item.parent.avatar_color} imageUrl={item.parent.avatar_url} size={44} /><View style={{ flex: 1 }}><Text style={{ fontFamily: fonts.sansExtra, fontSize: 13.5, color: colors.dark }}>{item.parent.display_name}</Text><Text style={{ fontFamily: fonts.sans, fontSize: 11, color: colors.taupe, paddingTop: 2 }}>{item.parent.neighborhood ?? 'Dolorian parent'}</Text></View>{actions}</Pressable>;
+  return <Pressable onPress={onPress} style={{ minHeight: 68, flexDirection: 'row', alignItems: 'center', gap: 11, paddingHorizontal: 13, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.rule }}><AvatarCircle initials={item.parent.avatar_initials} tone={item.parent.avatar_color} imageUrl={item.parent.avatar_url} size={44} /><View style={{ flex: 1 }}><Text style={{ fontFamily: fonts.sansExtra, fontSize: 13.5, color: colors.dark }}>{item.parent.display_name}</Text><Text style={{ fontFamily: fonts.sans, fontSize: 11, color: colors.taupe, paddingTop: 2 }}>{item.parent.neighborhood ?? 'Village parent'}</Text></View>{actions}</Pressable>;
 }
 
 function SmallButton({ label, onPress, filled = false }: { label: string; onPress: () => void; filled?: boolean }) {

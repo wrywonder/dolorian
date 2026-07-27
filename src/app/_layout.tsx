@@ -123,7 +123,7 @@ export default function RootLayout() {
             marginBottom: 14,
           }}
         >
-          Dolorian can’t reach its backend yet.
+          Village can’t reach its backend yet.
         </Text>
         <Text
           selectable

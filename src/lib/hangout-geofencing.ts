@@ -120,7 +120,7 @@ TaskManager.defineTask<{
 export async function configureHangoutMonitoring(spots: HangoutSpot[]): Promise<void> {
   const foreground = await Location.requestForegroundPermissionsAsync();
   if (foreground.status !== Location.PermissionStatus.GRANTED) {
-    throw new Error('Choose “Allow While Using App” so Dolorian can recognize hangout spots.');
+    throw new Error('Choose “Allow While Using App” so Village can recognize hangout spots.');
   }
   const background = await Location.requestBackgroundPermissionsAsync();
   if (background.status !== Location.PermissionStatus.GRANTED) {
@@ -128,7 +128,7 @@ export async function configureHangoutMonitoring(spots: HangoutSpot[]): Promise<
   }
   const notification = await Notifications.requestPermissionsAsync();
   if (notification.status !== Notifications.PermissionStatus.GRANTED) {
-    throw new Error('Turn on notifications so Dolorian can warn you before sharing.');
+    throw new Error('Turn on notifications so Village can warn you before sharing.');
   }
 
   const regions: Location.LocationRegion[] = spots

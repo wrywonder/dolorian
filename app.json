@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Dolorian",
+    "name": "Village",
     "slug": "dolorian",
     "scheme": "dolorian",
     "version": "1.0.0",
@@ -40,8 +40,8 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Dolorian uses your location to show nearby hangout spots and your village on the map.",
-          "locationAlwaysAndWhenInUsePermission": "Dolorian uses your location in the background to recognize your hangout spots and warn you before sharing that you're out and about.",
+          "locationWhenInUsePermission": "Village uses your location to show nearby hangout spots and your village on the map.",
+          "locationAlwaysAndWhenInUsePermission": "Village uses your location in the background to recognize your hangout spots and warn you before sharing that you're out and about.",
           "isIosBackgroundLocationEnabled": true,
           "isAndroidBackgroundLocationEnabled": true
         }

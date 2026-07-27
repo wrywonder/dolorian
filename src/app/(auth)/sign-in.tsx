@@ -89,7 +89,7 @@ export default function SignInScreen() {
               <TwinkleSparkle size={10} color={colors.amberLight} />
             </View>
             <Text style={{ fontFamily: fonts.serif, fontSize: 42, color: colors.dark, letterSpacing: -0.8, lineHeight: 44 }}>
-              dolorian
+              village
             </Text>
             <View style={{ marginTop: 6 }}>
               <Squiggle width={70} color={colors.terracotta} />

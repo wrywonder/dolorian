@@ -1,4 +1,4 @@
-# Dolorian — Agent Guide
+# Village — Agent Guide
 
 This file is the **single shared brief** for every AI coding tool used on this
 repo. Claude Code reads it via `CLAUDE.md` (which imports `@AGENTS.md`); Codex
@@ -14,7 +14,7 @@ on training memory for Expo/RN APIs, and do not copy patterns from older SDKs.
 
 ## What this is
 
-Dolorian is an Expo (React Native) app for parents — a feed ("Buzz"), plans,
+Village is an Expo (React Native) app for parents — a feed ("Buzz"), plans,
 IRL/venue discovery, prompts, and profiles — backed by Supabase (auth, Postgres
 with RLS, Storage, Edge Functions).
 
