@@ -690,6 +690,7 @@ async function updateMyProfile(input: {
   avatar_url: string | null;
   bio: string | null;
   profile_background: Parent['profile_background'];
+  profile_background_url: string | null;
 }): Promise<Parent> {
   const me = await getCurrentParentId();
   const displayName = input.display_name.trim();
@@ -710,6 +711,7 @@ async function updateMyProfile(input: {
       avatar_url: input.avatar_url,
       bio: input.bio?.trim() || null,
       profile_background: input.profile_background,
+      profile_background_url: input.profile_background_url,
     })
     .eq('id', me)
     .select()

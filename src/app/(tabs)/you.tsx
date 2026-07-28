@@ -4,8 +4,9 @@ import { router, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fonts, radii } from '@/lib/constants';
 import { data } from '@/lib/data';
-import { AvatarCircle, Icon, PhotoTile, Skeleton } from '@/components/ui';
+import { AvatarCircle, FadeOverlay, Icon, Skeleton } from '@/components/ui';
 import { KidsGrid } from '@/components/profile/KidsGrid';
+import { ProfileCover } from '@/components/profile/profile-cover';
 import { useCurrentParentId } from '@/hooks/useCurrentParentId';
 import type { ConnectionView, HangoutSpot, ProfileView, UUID } from '@/types';
 
@@ -71,7 +72,13 @@ export default function YouScreen() {
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.cream }} edges={['top']}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 140 }}>
         <View style={{ height: 300, overflow: 'hidden' }}>
-          <PhotoTile tone={parent.profile_background} height={300} label="YOUR VILLAGE, YOUR WAY" />
+          <ProfileCover
+            imageUrl={parent.profile_background_url}
+            tone={parent.profile_background}
+            height={300}
+            label="ADD A COVER PHOTO IN PROFILE SETTINGS"
+          />
+          <FadeOverlay direction="bottom" intensity={0.68} transparentUntil={0.32} />
           <View style={{ position: 'absolute', top: 14, left: 18, right: 18, flexDirection: 'row', justifyContent: 'space-between' }}>
             <View style={{ paddingHorizontal: 11, paddingVertical: 7, borderRadius: radii.pill, backgroundColor: 'rgba(255,255,255,0.9)' }}>
               <Text style={{ fontFamily: fonts.monoBold, fontSize: 10, color: colors.brownMid, letterSpacing: 0.6 }}>YOUR PROFILE</Text>

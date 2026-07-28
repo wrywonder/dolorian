@@ -13,6 +13,7 @@ export type Parent = {
   avatar_url: string | null;
   bio: string | null;
   profile_background: AvatarColor;
+  profile_background_url: string | null;
   visibility_mode: VisibilityMode;
   phone_e164: string | null;
   calendar_connected_at: Timestamp | null;

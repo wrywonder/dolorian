@@ -1,7 +1,8 @@
 import { Pressable, Text, View } from 'react-native';
 import { colors, fonts, type AvatarTone } from '@/lib/constants';
-import { AvatarCircle, FadeOverlay, Icon, PhotoTile } from '@/components/ui';
+import { AvatarCircle, FadeOverlay, Icon } from '@/components/ui';
 import type { ConnectionStatus, Parent } from '@/types';
+import { ProfileCover } from './profile-cover';
 
 type ProfileHeaderProps = {
   parent: Parent;
@@ -36,8 +37,14 @@ export function ProfileHeader({
 
   return (
     <View style={{ position: 'relative', height: 400, overflow: 'hidden' }}>
-      <PhotoTile tone={tone} height={400} label={label.toUpperCase()} />
+      <ProfileCover
+        imageUrl={parent.profile_background_url}
+        tone={tone}
+        height={400}
+        label={label.toUpperCase()}
+      />
       <FadeOverlay direction="top" intensity={0.75} transparentUntil={0.6} />
+      <FadeOverlay direction="bottom" intensity={0.7} transparentUntil={0.38} />
 
       {/* Top-row chrome */}
       <View

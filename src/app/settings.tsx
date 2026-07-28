@@ -13,10 +13,16 @@ import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { AvatarCircle, Icon, PhotoAvatar, TerracottaButton } from '@/components/ui';
-import { colors, fonts, type AvatarTone } from '@/lib/constants';
+import { ProfileCover } from '@/components/profile/profile-cover';
+import { colors, fonts, radii, type AvatarTone } from '@/lib/constants';
 import { data } from '@/lib/data';
 import { useCurrentParentId } from '@/hooks/useCurrentParentId';
-import { uploadKidImage, uploadProfileImage, type PickedImage } from '@/lib/storage';
+import {
+  uploadKidImage,
+  uploadProfileBackground,
+  uploadProfileImage,
+  type PickedImage,
+} from '@/lib/storage';
 import type { Kid, UUID } from '@/types';
 
 const TONES: AvatarTone[] = ['peach', 'golden', 'sage', 'mauve', 'slate', 'rose', 'butter'];
@@ -52,6 +58,8 @@ export default function SettingsScreen() {
   const [bio, setBio] = useState('');
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [pickedPhoto, setPickedPhoto] = useState<PickedImage | null>(null);
+  const [coverUrl, setCoverUrl] = useState<string | null>(null);
+  const [pickedCover, setPickedCover] = useState<PickedImage | null>(null);
   const [kids, setKids] = useState<KidDraft[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -69,6 +77,7 @@ export default function SettingsScreen() {
         setBackground(profile.parent.profile_background);
         setBio(profile.parent.bio ?? '');
         setPhotoUrl(profile.parent.avatar_url);
+        setCoverUrl(profile.parent.profile_background_url);
         setKids(profile.kids.map((kid) => kidDraft(kid)));
       })
       .catch((cause: unknown) => {
@@ -115,6 +124,9 @@ export default function SettingsScreen() {
       const uploadedPhotoUrl = pickedPhoto && myId
         ? await uploadProfileImage(myId, pickedPhoto)
         : photoUrl;
+      const uploadedCoverUrl = pickedCover && myId
+        ? await uploadProfileBackground(myId, pickedCover)
+        : coverUrl;
       await data.updateMyProfile({
         display_name: displayName,
         neighborhood: neighborhood || null,
@@ -122,6 +134,7 @@ export default function SettingsScreen() {
         avatar_url: uploadedPhotoUrl,
         bio,
         profile_background: background,
+        profile_background_url: uploadedCoverUrl,
       });
       const kidsWithPhotos = await Promise.all(parsedKids.map(async ({ key, pickedPhoto: kidPhoto, ...kid }) => ({
         ...kid,
@@ -176,6 +189,26 @@ export default function SettingsScreen() {
     const asset = result.assets[0];
     if (!asset) return;
     updateKid(key, { pickedPhoto: { uri: asset.uri, base64: asset.base64 } });
+  };
+
+  const chooseCover = async () => {
+    setError(null);
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      setError('Allow photo access to choose a profile cover.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [3, 2],
+      quality: 0.82,
+      base64: true,
+    });
+    if (result.canceled) return;
+    const asset = result.assets[0];
+    if (!asset) return;
+    setPickedCover({ uri: asset.uri, base64: asset.base64 });
   };
 
   return (
@@ -256,7 +289,58 @@ export default function SettingsScreen() {
             <Field label="ABOUT YOU" value={bio} onChangeText={setBio} placeholder="What should your village know about you?" multiline />
 
             <Text style={{ fontFamily: fonts.monoBold, fontSize: 9.5, letterSpacing: 0.6, color: colors.taupe, marginBottom: 8 }}>
-              PROFILE BACKGROUND
+              PROFILE COVER
+            </Text>
+            <Pressable
+              onPress={chooseCover}
+              style={{ height: 172, borderRadius: radii.lg, overflow: 'hidden', marginBottom: 10 }}
+            >
+              <ProfileCover
+                imageUrl={pickedCover?.uri ?? coverUrl}
+                tone={background}
+                height={172}
+                label="ADD A PHOTO FROM YOUR LIBRARY"
+                radius={radii.lg}
+              />
+              <View
+                style={{
+                  position: 'absolute',
+                  left: 12,
+                  bottom: 12,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 7,
+                  paddingHorizontal: 12,
+                  paddingVertical: 8,
+                  borderRadius: radii.pill,
+                  backgroundColor: 'rgba(255,255,255,0.92)',
+                }}
+              >
+                <Icon name="camera" size={16} color={colors.dark} />
+                <Text style={{ fontFamily: fonts.sansExtra, fontSize: 11, color: colors.dark }}>
+                  {coverUrl || pickedCover ? 'change cover photo' : 'add cover photo'}
+                </Text>
+              </View>
+            </Pressable>
+            {coverUrl || pickedCover ? (
+              <Pressable
+                onPress={() => {
+                  setCoverUrl(null);
+                  setPickedCover(null);
+                }}
+                hitSlop={8}
+                style={{ alignSelf: 'flex-start', marginBottom: 14 }}
+              >
+                <Text style={{ fontFamily: fonts.sansBold, fontSize: 11, color: colors.terracotta }}>
+                  remove cover photo
+                </Text>
+              </Pressable>
+            ) : null}
+            <Text style={{ fontFamily: fonts.sans, fontSize: 11, lineHeight: 16, color: colors.taupe, marginBottom: 10 }}>
+              This photo appears behind your name when friends open your profile.
+            </Text>
+            <Text style={{ fontFamily: fonts.monoBold, fontSize: 9.5, letterSpacing: 0.6, color: colors.taupe, marginBottom: 8 }}>
+              FALLBACK COLOR
             </Text>
             <View style={{ flexDirection: 'row', gap: 9, marginBottom: 28 }}>
               {TONES.map((item) => (
