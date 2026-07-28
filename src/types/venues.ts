@@ -19,6 +19,11 @@ export type Venue = {
   geofence_radius_m: number;
   venue_type: VenueType;
   default_hangout: boolean;
+  google_place_id: string | null;
+  image_url: string | null;
+  image_source: 'wikimedia' | 'openverse' | 'venue_upload' | null;
+  image_attribution: string | null;
+  image_attribution_url: string | null;
 };
 
 export type HangoutSpot = {

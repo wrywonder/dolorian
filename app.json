@@ -5,7 +5,7 @@
     "scheme": "dolorian",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/icon-village.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
@@ -22,7 +22,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/icon-village.png",
         "backgroundColor": "#FBF4E9"
       },
       "edgeToEdgeEnabled": true,
@@ -30,7 +30,7 @@
       "package": "com.dolorian.app"
     },
     "web": {
-      "favicon": "./assets/favicon.png",
+      "favicon": "./assets/icon-village.png",
       "bundler": "metro"
     },
     "plugins": [

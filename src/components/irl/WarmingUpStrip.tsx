@@ -1,7 +1,7 @@
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { colors, fonts, type AvatarTone } from '@/lib/constants';
-import { FadeOverlay, HandArrow, PhotoTile } from '@/components/ui';
+import { FadeOverlay, HandArrow, VenuePhoto } from '@/components/ui';
 import type { Venue } from '@/types';
 
 type WarmingUpStripProps = {
@@ -60,7 +60,7 @@ export function WarmingUpStrip({ title = 'warming up', items, onPressVenue }: Wa
               position: 'relative',
             }}
           >
-            <PhotoTile tone={toneForVenue(c.venue)} height={86} radius={0} />
+            <VenuePhoto venue={c.venue} fallbackTone={toneForVenue(c.venue)} height={86} radius={0} />
             <FadeOverlay direction="bottom" intensity={0.65} transparentUntil={0} />
             <View
               style={{

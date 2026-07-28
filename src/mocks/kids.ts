@@ -10,6 +10,7 @@ export const mockKids: Kid[] = [
     name: 'Sasha',
     birth_year: 2021,
     interests: ['soccer', 'painting'],
+    avatar_url: null,
     created_at: '2026-04-10T18:32:00Z',
   },
   {
@@ -18,6 +19,7 @@ export const mockKids: Kid[] = [
     name: 'Eli',
     birth_year: 2023,
     interests: ['music', 'puzzles'],
+    avatar_url: null,
     created_at: '2026-04-10T18:32:00Z',
   },
   // Maya's family
@@ -27,6 +29,7 @@ export const mockKids: Kid[] = [
     name: 'Theo',
     birth_year: 2021,
     interests: ['soccer', 'dinosaurs'],
+    avatar_url: null,
     created_at: '2026-04-11T09:15:00Z',
   },
   // Jordan's family
@@ -36,6 +39,7 @@ export const mockKids: Kid[] = [
     name: 'Felix',
     birth_year: 2023,
     interests: ['climbing', 'tumbling'],
+    avatar_url: null,
     created_at: '2026-04-12T14:20:00Z',
   },
   {
@@ -44,6 +48,7 @@ export const mockKids: Kid[] = [
     name: 'Nora',
     birth_year: 2020,
     interests: ['storytime', 'drawing'],
+    avatar_url: null,
     created_at: '2026-04-12T14:20:00Z',
   },
   // Hannah's family
@@ -53,6 +58,7 @@ export const mockKids: Kid[] = [
     name: 'Asha',
     birth_year: 2020,
     interests: ['ballet', 'reading'],
+    avatar_url: null,
     created_at: '2026-04-13T11:00:00Z',
   },
   {
@@ -61,6 +67,7 @@ export const mockKids: Kid[] = [
     name: 'Leo',
     birth_year: 2023,
     interests: ['blocks', 'park'],
+    avatar_url: null,
     created_at: '2026-04-13T11:00:00Z',
   },
   // Priya's family
@@ -70,6 +77,7 @@ export const mockKids: Kid[] = [
     name: 'Aiden',
     birth_year: 2022,
     interests: ['swim', 'trucks'],
+    avatar_url: null,
     created_at: '2026-04-14T16:45:00Z',
   },
   {
@@ -78,6 +86,7 @@ export const mockKids: Kid[] = [
     name: 'Zoe',
     birth_year: 2019,
     interests: ['piano', 'soccer'],
+    avatar_url: null,
     created_at: '2026-04-14T16:45:00Z',
   },
   // Sam's family
@@ -87,6 +96,7 @@ export const mockKids: Kid[] = [
     name: 'Kai',
     birth_year: 2018,
     interests: ['piano', 'hiking'],
+    avatar_url: null,
     created_at: '2026-04-15T08:00:00Z',
   },
 ];

@@ -16,7 +16,7 @@ import { AvatarCircle, Icon, PhotoAvatar, TerracottaButton } from '@/components/
 import { colors, fonts, type AvatarTone } from '@/lib/constants';
 import { data } from '@/lib/data';
 import { useCurrentParentId } from '@/hooks/useCurrentParentId';
-import { uploadProfileImage, type PickedImage } from '@/lib/storage';
+import { uploadKidImage, uploadProfileImage, type PickedImage } from '@/lib/storage';
 import type { Kid, UUID } from '@/types';
 
 const TONES: AvatarTone[] = ['peach', 'golden', 'sage', 'mauve', 'slate', 'rose', 'butter'];
@@ -27,6 +27,8 @@ type KidDraft = {
   name: string;
   birthYear: string;
   interests: string;
+  photoUrl: string | null;
+  pickedPhoto: PickedImage | null;
 };
 
 function kidDraft(kid?: Kid): KidDraft {
@@ -36,6 +38,8 @@ function kidDraft(kid?: Kid): KidDraft {
     name: kid?.name ?? '',
     birthYear: kid ? String(kid.birth_year) : '',
     interests: kid?.interests.join(', ') ?? '',
+    photoUrl: kid?.avatar_url ?? null,
+    pickedPhoto: null,
   };
 }
 
@@ -93,9 +97,12 @@ export default function SettingsScreen() {
     }
     const parsedKids = kids.map((kid) => ({
       ...(kid.id ? { id: kid.id } : {}),
+      key: kid.key,
       name: kid.name,
       birth_year: Number.parseInt(kid.birthYear, 10),
       interests: kid.interests.split(',').map((interest) => interest.trim()).filter(Boolean),
+      avatar_url: kid.photoUrl,
+      pickedPhoto: kid.pickedPhoto,
     }));
     if (parsedKids.some((kid) => !Number.isInteger(kid.birth_year))) {
       setError('add a four-digit birth year for each kid');
@@ -116,7 +123,13 @@ export default function SettingsScreen() {
         bio,
         profile_background: background,
       });
-      await data.saveMyKids(parsedKids);
+      const kidsWithPhotos = await Promise.all(parsedKids.map(async ({ key, pickedPhoto: kidPhoto, ...kid }) => ({
+        ...kid,
+        avatar_url: kidPhoto && myId
+          ? await uploadKidImage(myId, key, kidPhoto)
+          : kid.avatar_url,
+      })));
+      await data.saveMyKids(kidsWithPhotos);
       router.back();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not save your profile');
@@ -143,6 +156,26 @@ export default function SettingsScreen() {
     const asset = result.assets[0];
     if (!asset) return;
     setPickedPhoto({ uri: asset.uri, base64: asset.base64 });
+  };
+
+  const chooseKidPhoto = async (key: string) => {
+    setError(null);
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      setError('Allow photo access to choose a kid photo.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.82,
+      base64: true,
+    });
+    if (result.canceled) return;
+    const asset = result.assets[0];
+    if (!asset) return;
+    updateKid(key, { pickedPhoto: { uri: asset.uri, base64: asset.base64 } });
   };
 
   return (
@@ -268,10 +301,27 @@ export default function SettingsScreen() {
                   marginBottom: 12,
                 }}
               >
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                  <Text style={{ fontFamily: fonts.sansExtra, fontSize: 12, color: colors.dark }}>
-                    kid {index + 1}
-                  </Text>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                    <PhotoAvatar
+                      tone={TONES[(index + 2) % TONES.length]}
+                      imageUrl={kid.pickedPhoto?.uri ?? kid.photoUrl}
+                      size={66}
+                      ringWidth={3}
+                      ringColor={colors.cream}
+                      onPress={() => chooseKidPhoto(kid.key)}
+                    />
+                    <View>
+                      <Text style={{ fontFamily: fonts.sansExtra, fontSize: 12, color: colors.dark }}>
+                        kid {index + 1}
+                      </Text>
+                      <Pressable onPress={() => chooseKidPhoto(kid.key)} hitSlop={8}>
+                        <Text style={{ fontFamily: fonts.sansBold, fontSize: 11, color: colors.terracotta, marginTop: 5 }}>
+                          {kid.photoUrl || kid.pickedPhoto ? 'change photo' : '+ add photo'}
+                        </Text>
+                      </Pressable>
+                    </View>
+                  </View>
                   <Pressable onPress={() => setKids((current) => current.filter((item) => item.key !== kid.key))} hitSlop={10}>
                     <Text style={{ fontFamily: fonts.sansBold, fontSize: 12, color: colors.terracotta }}>remove</Text>
                   </Pressable>

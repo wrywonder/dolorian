@@ -4,7 +4,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fonts, radii } from '@/lib/constants';
 import { data } from '@/lib/data';
-import { Icon, Skeleton } from '@/components/ui';
+import { Icon, Skeleton, VenuePhoto } from '@/components/ui';
 import { AddSpotSheet } from '@/components/irl/AddSpotSheet';
 import { refreshHangoutMonitoring } from '@/lib/hangout-geofencing';
 import type { HangoutSpot } from '@/types';
@@ -40,10 +40,21 @@ export default function HangoutSpotsScreen() {
       {error ? <Text selectable style={{ fontFamily: fonts.sansSemi, fontSize: 12, color: colors.terracotta }}>{error}</Text> : null}
       {!spots ? <Skeleton width="100%" height={220} radius={20} /> : spots.map((spot) => (
         <Pressable key={spot.venue.id} onPress={() => toggle(spot)} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: radii.lg, backgroundColor: colors.surface, borderWidth: 1, borderColor: spot.is_mine ? colors.sage : colors.rule }}>
-          <Text style={{ fontSize: 24 }}>{spot.venue.emoji ?? '📍'}</Text><View style={{ flex: 1 }}><Text style={{ fontFamily: fonts.sansExtra, fontSize: 13.5, color: colors.dark }}>{spot.venue.name}</Text><Text style={{ fontFamily: fonts.sans, fontSize: 11, color: colors.taupe, paddingTop: 3 }}>{spot.is_default ? 'neighborhood favorite' : spot.suggested_by.length > 0 ? `used by ${spot.suggested_by.join(' and ')}` : 'your custom spot'}</Text></View><View style={{ width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: spot.is_mine ? colors.sage : colors.cream }}><Icon name={spot.is_mine ? 'check.circle' : 'plus'} size={16} color={spot.is_mine ? colors.white : colors.brownMid} /></View>
+          <VenuePhoto venue={spot.venue} fallbackTone={toneForVenue(spot.venue.venue_type)} height={58} radius={14} style={{ width: 58 }} /><View style={{ flex: 1 }}><Text style={{ fontFamily: fonts.sansExtra, fontSize: 13.5, color: colors.dark }}>{spot.venue.emoji ?? '📍'} {spot.venue.name}</Text><Text style={{ fontFamily: fonts.sans, fontSize: 11, color: colors.taupe, paddingTop: 3 }}>{spot.is_default ? 'neighborhood favorite' : spot.suggested_by.length > 0 ? `used by ${spot.suggested_by.join(' and ')}` : 'your custom spot'}</Text></View><View style={{ width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: spot.is_mine ? colors.sage : colors.cream }}><Icon name={spot.is_mine ? 'check.circle' : 'plus'} size={16} color={spot.is_mine ? colors.white : colors.brownMid} /></View>
         </Pressable>
       ))}
     </ScrollView>
     <AddSpotSheet open={addOpen} onClose={() => setAddOpen(false)} onCreated={async () => { setAddOpen(false); await load(); const next = await data.getHangoutSpots(); await refreshHangoutMonitoring(next); }} />
   </SafeAreaView>;
+}
+
+function toneForVenue(type: HangoutSpot['venue']['venue_type']) {
+  switch (type) {
+    case 'park': return 'butter' as const;
+    case 'playground': return 'golden' as const;
+    case 'studio': return 'mauve' as const;
+    case 'swim': return 'slate' as const;
+    case 'library': return 'sage' as const;
+    default: return 'peach' as const;
+  }
 }

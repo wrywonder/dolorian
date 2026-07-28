@@ -463,11 +463,14 @@ async function createVenue(input: {
   lng: number;
 }): Promise<Venue> {
   const { data, error } = await supabase
-    .from('venues')
-    .insert(input)
-    .select()
-    .single();
-  if (error) throw error;
+    .rpc('create_hangout_venue', {
+      venue_name: input.name,
+      venue_emoji: input.emoji,
+      venue_type: input.venue_type,
+      venue_lat: input.lat,
+      venue_lng: input.lng,
+    });
+  if (error || !data) throw error ?? new Error('Could not create that hangout.');
   return data as Venue;
 }
 
@@ -716,7 +719,13 @@ async function updateMyProfile(input: {
 }
 
 async function saveMyKids(
-  kids: { id?: UUID; name: string; birth_year: number; interests: string[] }[],
+  kids: {
+    id?: UUID;
+    name: string;
+    birth_year: number;
+    interests: string[];
+    avatar_url?: string | null;
+  }[],
 ): Promise<Kid[]> {
   const me = await getCurrentParentId();
   const currentYear = new Date().getFullYear();
@@ -756,6 +765,7 @@ async function saveMyKids(
     name: kid.name,
     birth_year: kid.birth_year,
     interests: kid.interests,
+    avatar_url: kid.avatar_url ?? null,
   }));
   const { data, error } = await supabase
     .from('kids')

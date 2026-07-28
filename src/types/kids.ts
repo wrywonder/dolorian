@@ -6,5 +6,6 @@ export type Kid = {
   name: string;
   birth_year: number;
   interests: string[];
+  avatar_url: string | null;
   created_at: Timestamp;
 };

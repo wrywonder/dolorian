@@ -43,3 +43,19 @@ export async function uploadProfileImage(parentId: UUID, image: PickedImage): Pr
   const { data } = supabase.storage.from('profile-images').getPublicUrl(path);
   return data.publicUrl;
 }
+
+export async function uploadKidImage(
+  parentId: UUID,
+  kidKey: string,
+  image: PickedImage,
+): Promise<string> {
+  const decoded = decodeImage(image);
+  const safeKidKey = kidKey.replace(/[^a-zA-Z0-9-]/g, '-');
+  const path = `${parentId}/kids/${safeKidKey}/${Date.now()}.${decoded.extension}`;
+  const { error } = await supabase.storage
+    .from('profile-images')
+    .upload(path, decoded.body, { contentType: decoded.contentType });
+  if (error) throw error;
+  const { data } = supabase.storage.from('profile-images').getPublicUrl(path);
+  return data.publicUrl;
+}

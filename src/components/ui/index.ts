@@ -11,6 +11,7 @@ export { HandArrow } from './HandArrow';
 export { Icon, type IconName } from './Icon';
 export { PhotoAvatar } from './PhotoAvatar';
 export { PhotoTile } from './PhotoTile';
+export { VenuePhoto } from './VenuePhoto';
 export { PulseDot } from './PulseDot';
 export { ScreenHeader } from './ScreenHeader';
 export { Sparkle } from './Sparkle';
