@@ -38,7 +38,9 @@ export default function OtherProfileScreen() {
             justifyContent: 'center',
           }}
         >
-          <Icon name="chevron.right" size={18} color={colors.dark} weight={1.8} />
+          <View style={{ transform: [{ rotate: '180deg' }] }}>
+            <Icon name="chevron.right" size={18} color={colors.dark} weight={1.8} />
+          </View>
         </Pressable>
       </View>
     </SafeAreaView>

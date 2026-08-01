@@ -8,7 +8,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { colors, fonts } from '@/lib/constants';
 import { TerracottaButton } from '@/components/ui';
@@ -24,6 +24,7 @@ type Step = 'email' | 'otp';
 const REVIEW_EMAIL = 'appreview@dolorian.app';
 
 export default function SignInScreen() {
+  const { invite } = useLocalSearchParams<{ invite?: string }>();
   const [step, setStep] = useState<Step>('email');
   const [email, setEmail] = useState('');
   const [otp, setOtp] = useState('');
@@ -67,9 +68,11 @@ export default function SignInScreen() {
       .maybeSingle();
 
     if (parent) {
-      router.replace('/(tabs)/buzz');
+      router.replace((invite ? `/invite/${invite}` : '/(tabs)/buzz') as never);
     } else {
-      router.replace('/(auth)/onboard');
+      router.replace(invite
+        ? { pathname: '/(auth)/onboard', params: { invite } } as never
+        : '/(auth)/onboard');
     }
   };
 

@@ -56,6 +56,7 @@ export default function SettingsScreen() {
   const [tone, setTone] = useState<AvatarTone>('peach');
   const [background, setBackground] = useState<AvatarTone>('peach');
   const [bio, setBio] = useState('');
+  const [phone, setPhone] = useState('');
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [pickedPhoto, setPickedPhoto] = useState<PickedImage | null>(null);
   const [coverUrl, setCoverUrl] = useState<string | null>(null);
@@ -68,8 +69,8 @@ export default function SettingsScreen() {
   useEffect(() => {
     if (!myId) return;
     let active = true;
-    data.getProfile(myId)
-      .then((profile) => {
+    Promise.all([data.getProfile(myId), data.getMyPhone()])
+      .then(([profile, privatePhone]) => {
         if (!active || !profile) return;
         setDisplayName(profile.parent.display_name);
         setNeighborhood(profile.parent.neighborhood ?? '');
@@ -79,6 +80,7 @@ export default function SettingsScreen() {
         setPhotoUrl(profile.parent.avatar_url);
         setCoverUrl(profile.parent.profile_background_url);
         setKids(profile.kids.map((kid) => kidDraft(kid)));
+        setPhone(privatePhone ?? '');
       })
       .catch((cause: unknown) => {
         if (active) setError(cause instanceof Error ? cause.message : 'Could not load your profile');
@@ -136,6 +138,7 @@ export default function SettingsScreen() {
         profile_background: background,
         profile_background_url: uploadedCoverUrl,
       });
+      await data.setMyPhone(phone.trim() || null);
       const kidsWithPhotos = await Promise.all(parsedKids.map(async ({ key, pickedPhoto: kidPhoto, ...kid }) => ({
         ...kid,
         avatar_url: kidPhoto && myId
@@ -287,6 +290,10 @@ export default function SettingsScreen() {
             <Field label="YOUR NAME" value={displayName} onChangeText={setDisplayName} placeholder="Your name" />
             <Field label="NEIGHBORHOOD" value={neighborhood} onChangeText={setNeighborhood} placeholder="e.g. North Berkeley" />
             <Field label="ABOUT YOU" value={bio} onChangeText={setBio} placeholder="What should your village know about you?" multiline />
+            <Field label="PRIVATE PHONE" value={phone} onChangeText={setPhone} placeholder="+1 415 555 0123" keyboardType="phone-pad" />
+            <Text style={{ fontFamily: fonts.sans, fontSize: 11, lineHeight: 16, color: colors.taupe, marginTop: -12, marginBottom: 22 }}>
+              Stored privately. Connected parents see it only when you share it with them individually.
+            </Text>
 
             <Text style={{ fontFamily: fonts.monoBold, fontSize: 9.5, letterSpacing: 0.6, color: colors.taupe, marginBottom: 8 }}>
               PROFILE COVER
@@ -449,7 +456,7 @@ function Field({
   value: string;
   onChangeText: (value: string) => void;
   placeholder: string;
-  keyboardType?: 'default' | 'number-pad';
+  keyboardType?: 'default' | 'number-pad' | 'phone-pad';
   multiline?: boolean;
 }) {
   return (

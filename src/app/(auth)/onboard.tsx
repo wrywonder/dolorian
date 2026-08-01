@@ -9,7 +9,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { colors, fonts, type AvatarTone } from '@/lib/constants';
 import { AvatarCircle, TerracottaButton } from '@/components/ui';
@@ -17,6 +17,7 @@ import { AvatarCircle, TerracottaButton } from '@/components/ui';
 const TONES: AvatarTone[] = ['peach', 'golden', 'sage', 'mauve', 'slate', 'rose', 'butter'];
 
 export default function OnboardScreen() {
+  const { invite } = useLocalSearchParams<{ invite?: string }>();
   const [displayName, setDisplayName] = useState('');
   const [neighborhood, setNeighborhood] = useState('');
   const [tone, setTone] = useState<AvatarTone>('peach');
@@ -49,7 +50,7 @@ export default function OnboardScreen() {
 
     setLoading(false);
     if (err) { setError(err.message); return; }
-    router.replace('/(tabs)/buzz');
+    router.replace((invite ? `/invite/${invite}` : '/(tabs)/buzz') as never);
   };
 
   return (

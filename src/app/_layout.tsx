@@ -72,7 +72,10 @@ export default function RootLayout() {
     if (!session) return;
     const openNotification = (notification: Notifications.Notification) => {
       const url = notification.request.content.data.url;
-      if (url === 'dolorian://irl') router.push('/irl');
+      if (typeof url === 'string') {
+        if (url === 'dolorian://irl') router.push('/irl');
+        else if (url.startsWith('/')) router.push(url as never);
+      }
     };
     const last = Notifications.getLastNotificationResponse();
     if (last?.notification) {

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Text, View } from 'react-native';
 import { colors, fonts } from '@/lib/constants';
 import { Icon, TerracottaButton } from '@/components/ui';
@@ -8,9 +9,9 @@ type ConnectCTAProps = {
   status: ConnectionStatus | 'none';
   /** True when the pending row was initiated by the viewer (not the displayed parent). */
   pendingInitiatedByMe: boolean;
-  onConnect: () => void;
-  onAccept?: () => void;
-  onDecline?: () => void;
+  onConnect: () => Promise<void> | void;
+  onAccept?: () => Promise<void> | void;
+  onDecline?: () => Promise<void> | void;
 };
 
 /**
@@ -29,6 +30,27 @@ export function ConnectCTA({
   onDecline,
 }: ConnectCTAProps) {
   const firstName = parent.display_name.split(' ')[0] ?? parent.display_name;
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const run = async (action?: () => Promise<void> | void) => {
+    if (!action || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await action();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'That did not work. Please try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const errorCopy = error ? (
+    <Text selectable style={{ fontFamily: fonts.sansSemi, fontSize: 12, lineHeight: 17, color: colors.terracotta, textAlign: 'center', marginTop: 8 }}>
+      {error}
+    </Text>
+  ) : null;
 
   if (status === 'connected') {
     return (
@@ -98,14 +120,15 @@ export function ConnectCTA({
     return (
       <View>
         <TerracottaButton
-          label={`Accept ${firstName}'s connection`}
+          label={busy ? 'accepting…' : `Accept ${firstName}'s connection`}
           fullWidth
           withConfetti
-          onPress={onAccept}
+          disabled={busy}
+          onPress={() => run(onAccept)}
           iconLeft={<Icon name="wave" size={22} color={colors.white} weight={2.4} />}
         />
         <Text
-          onPress={onDecline}
+          onPress={() => run(onDecline)}
           style={{
             fontFamily: fonts.serif,
             fontSize: 13.5,
@@ -116,6 +139,7 @@ export function ConnectCTA({
         >
           decline · friendships, not follows
         </Text>
+        {errorCopy}
       </View>
     );
   }
@@ -124,10 +148,11 @@ export function ConnectCTA({
   return (
     <View>
       <TerracottaButton
-        label={`Connect with ${firstName}`}
+        label={busy ? 'sending…' : `Connect with ${firstName}`}
         fullWidth
         withConfetti
-        onPress={onConnect}
+        disabled={busy}
+        onPress={() => run(onConnect)}
         iconLeft={<Icon name="wave" size={22} color={colors.white} weight={2.4} />}
       />
       <Text
@@ -141,6 +166,7 @@ export function ConnectCTA({
       >
         both of you say yes · friendships, not follows
       </Text>
+      {errorCopy}
     </View>
   );
 }

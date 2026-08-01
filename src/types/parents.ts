@@ -15,7 +15,6 @@ export type Parent = {
   profile_background: AvatarColor;
   profile_background_url: string | null;
   visibility_mode: VisibilityMode;
-  phone_e164: string | null;
   calendar_connected_at: Timestamp | null;
   calendar_provider: CalendarProvider | null;
   created_at: Timestamp;

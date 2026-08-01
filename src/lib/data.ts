@@ -12,7 +12,14 @@ import type {
   ActivityInteraction,
   ActivitySocialProof,
   CalendarEvent,
+  BlockedParent,
+  ConnectionCircle,
+  ConnectionInvite,
+  ConnectionInvitePreview,
+  ConnectionNotificationPreferences,
+  ConnectionPreference,
   CommentView,
+  ContactExchange,
   Connection,
   ConnectionView,
   ConnectionStatus,
@@ -28,12 +35,15 @@ import type {
   Prompt,
   PromptType,
   ResolvedPrompt,
+  ReportReason,
+  SuggestedConnection,
   UUID,
   Venue,
   VisibilityMode,
 } from '@/types';
 
 const LOCATION_VISIBILITY_MS = 2 * 60 * 60 * 1000;
+const PARENT_PUBLIC_COLUMNS = 'id,auth_user_id,display_name,neighborhood,avatar_color,avatar_initials,avatar_url,bio,profile_background,profile_background_url,visibility_mode,calendar_connected_at,calendar_provider,created_at' as const;
 
 function locationExpiry(from: Date = new Date()): string {
   return new Date(from.getTime() + LOCATION_VISIBILITY_MS).toISOString();
@@ -65,7 +75,7 @@ async function getCurrentUser(): Promise<Parent> {
   const id = await getCurrentParentId();
   const { data, error } = await supabase
     .from('parents')
-    .select('*')
+    .select(PARENT_PUBLIC_COLUMNS)
     .eq('id', id)
     .single();
   if (error || !data) throw new Error('Current user not found');
@@ -76,17 +86,27 @@ async function getCurrentUser(): Promise<Parent> {
 
 async function getFeedPosts(): Promise<FeedItem[]> {
   const me = await getCurrentParentId();
-  const { data: posts, error } = await supabase
-    .from('posts')
-    .select(
-      '*, author:parents!author_id(*), activity:activities(*), venue:venues(*), reactions:post_reactions(count), comments:post_comments(count)',
-    )
-    .order('created_at', { ascending: false })
-    .limit(50);
+  const [{ data: posts, error }, { data: mutedRows, error: mutedError }] = await Promise.all([
+    supabase
+      .from('posts')
+      .select(
+        `*, author:parents!author_id(${PARENT_PUBLIC_COLUMNS}), activity:activities(*), venue:venues(*), reactions:post_reactions(count), comments:post_comments(count)`,
+      )
+      .order('created_at', { ascending: false })
+      .limit(50),
+    supabase
+      .from('connection_preferences')
+      .select('other_id')
+      .eq('owner_id', me)
+      .eq('muted', true),
+  ]);
   if (error) throw error;
+  if (mutedError) throw mutedError;
+  const mutedIds = new Set((mutedRows ?? []).map((row) => row.other_id as UUID));
+  const visiblePosts = (posts ?? []).filter((row) => !mutedIds.has((row as Record<string, unknown>).author_id as UUID));
 
   // Which of these posts the current user has reacted to, in one query.
-  const postIds = (posts ?? []).map((row: Record<string, unknown>) => row.id as string);
+  const postIds = visiblePosts.map((row: Record<string, unknown>) => row.id as string);
   const myReactedIds = new Set<string>();
   if (postIds.length > 0) {
     const { data: mine } = await supabase
@@ -99,7 +119,7 @@ async function getFeedPosts(): Promise<FeedItem[]> {
     }
   }
 
-  return (posts ?? []).map((row: Record<string, unknown>) => ({
+  return visiblePosts.map((row: Record<string, unknown>) => ({
     post: extractPost(row),
     author: row.author as Parent,
     activity: (row.activity as Activity) ?? null,
@@ -166,7 +186,7 @@ async function toggleReaction(postId: UUID, emoji: string): Promise<boolean> {
 async function getPostComments(postId: UUID): Promise<CommentView[]> {
   const { data, error } = await supabase
     .from('post_comments')
-    .select('*, author:parents!author_id(*)')
+    .select(`*, author:parents!author_id(${PARENT_PUBLIC_COLUMNS})`)
     .eq('post_id', postId)
     .order('created_at', { ascending: true });
   if (error) throw error;
@@ -216,7 +236,7 @@ async function resolvePrompt<T extends PromptType>(prompt: Prompt<T>): Promise<R
       ? supabase.from('activities').select('*, venue:venues(*)').eq('id', activityId).maybeSingle()
       : Promise.resolve({ data: null }),
     signalId
-      ? supabase.from('parents').select('*').eq('id', signalId).maybeSingle()
+      ? supabase.from('parents').select(PARENT_PUBLIC_COLUMNS).eq('id', signalId).maybeSingle()
       : Promise.resolve({ data: null }),
   ]);
 
@@ -257,7 +277,7 @@ async function getUpcomingActivities(): Promise<ActivitySocialProof[]> {
 
   const { data: interactions } = await supabase
     .from('activity_interactions')
-    .select('*, parent:parents(*)')
+    .select(`*, parent:parents(${PARENT_PUBLIC_COLUMNS})`)
     .in('activity_id', activityIds);
 
   return activities.map((row: Record<string, unknown>) =>
@@ -280,7 +300,7 @@ async function getDiscoveredActivityPreviews(): Promise<ActivitySocialProof[]> {
 
   const { data: interactions } = await supabase
     .from('activity_interactions')
-    .select('*, parent:parents(*)')
+    .select(`*, parent:parents(${PARENT_PUBLIC_COLUMNS})`)
     .in('activity_id', activityIds);
 
   return activities.map((row: Record<string, unknown>) =>
@@ -359,7 +379,7 @@ async function getNearbyParents(): Promise<NearbyParent[]> {
   const now = new Date().toISOString();
   const { data, error } = await supabase
     .from('parent_locations')
-    .select('*, parent:parents(*), venue:venues(*)')
+    .select(`*, parent:parents(${PARENT_PUBLIC_COLUMNS}), venue:venues(*)`)
     .or(`visible.eq.true,auto_share_at.lte.${now}`)
     .gt('expires_at', now);
   if (error || !data) return [];
@@ -383,7 +403,7 @@ async function getVisibleConnectionAvatars(): Promise<Parent[]> {
   const now = new Date().toISOString();
   const { data, error } = await supabase
     .from('parent_locations')
-    .select('parent:parents(*)')
+    .select(`parent:parents(${PARENT_PUBLIC_COLUMNS})`)
     .or(`visible.eq.true,auto_share_at.lte.${now}`)
     .gt('expires_at', now)
     .neq('parent_id', me);
@@ -630,7 +650,7 @@ async function getProfile(parentId: UUID): Promise<ProfileView | null> {
   const [a, b] = me < parentId ? [me, parentId] : [parentId, me];
 
   const [parentRes, kidsRes, connRes, mutualRes, interactionsRes] = await Promise.all([
-    supabase.from('parents').select('*').eq('id', parentId).maybeSingle(),
+    supabase.from('parents').select(PARENT_PUBLIC_COLUMNS).eq('id', parentId).maybeSingle(),
     supabase.from('kids').select('*').eq('parent_id', parentId),
     isSelf
       ? Promise.resolve({ data: null })
@@ -789,11 +809,21 @@ async function getConnections(): Promise<Connection[]> {
 
 async function getConnectionViews(): Promise<ConnectionView[]> {
   const me = await getCurrentParentId();
-  const { data: rows, error } = await supabase
-    .from('connections')
-    .select('*, parentA:parents!parent_a(*), parentB:parents!parent_b(*)')
-    .order('created_at', { ascending: false });
+  const [{ data: rows, error }, { data: preferenceRows, error: preferenceError }] = await Promise.all([
+    supabase
+      .from('connections')
+      .select(`*, parentA:parents!parent_a(${PARENT_PUBLIC_COLUMNS}), parentB:parents!parent_b(${PARENT_PUBLIC_COLUMNS})`)
+      .order('created_at', { ascending: false }),
+    supabase
+      .from('connection_preferences')
+      .select('*')
+      .eq('owner_id', me),
+  ]);
   if (error) throw error;
+  if (preferenceError) throw preferenceError;
+  const preferences = new Map(
+    (preferenceRows ?? []).map((row) => [(row as ConnectionPreference).other_id, row as ConnectionPreference]),
+  );
   return (rows ?? []).flatMap((row: Record<string, unknown>) => {
     const connection: Connection = {
       id: row.id as UUID,
@@ -806,94 +836,232 @@ async function getConnectionViews(): Promise<ConnectionView[]> {
     };
     const parent = (connection.parent_a === me ? row.parentB : row.parentA) as Parent | null;
     if (!parent) return [];
-    return [{ connection, parent, incoming: connection.status === 'pending' && connection.initiated_by !== me }];
+    return [{
+      connection,
+      parent,
+      incoming: connection.status === 'pending' && connection.initiated_by !== me,
+      outgoing: connection.status === 'pending' && connection.initiated_by === me,
+      preference: preferences.get(parent.id) ?? {
+        owner_id: me,
+        other_id: parent.id,
+        favorite: false,
+        muted: false,
+        location_visible: true,
+        note: null,
+        updated_at: connection.responded_at ?? connection.created_at,
+      },
+    }];
   });
 }
 
 async function requestConnection(otherId: UUID): Promise<Connection> {
-  const me = await getCurrentParentId();
-  if (otherId === me) throw new Error('Cannot connect to self');
-  const [a, b] = me < otherId ? [me, otherId] : [otherId, me];
-
-  const { data: existing } = await supabase
-    .from('connections')
-    .select('*')
-    .eq('parent_a', a)
-    .eq('parent_b', b)
-    .maybeSingle();
-  if (existing) {
-    const connection = existing as Connection;
-    if (connection.status !== 'declined') return connection;
-    const { data, error } = await supabase
-      .from('connections')
-      .update({
-        status: 'pending',
-        initiated_by: me,
-        responded_at: null,
-        created_at: new Date().toISOString(),
-      })
-      .eq('id', connection.id)
-      .select()
-      .single();
-    if (error) throw error;
-    return data as Connection;
-  }
-
-  const { data, error } = await supabase
-    .from('connections')
-    .insert({ parent_a: a, parent_b: b, status: 'pending', initiated_by: me })
-    .select()
-    .single();
+  const { data, error } = await supabase.rpc('request_connection', { other: otherId });
   if (error) throw error;
   return data as Connection;
 }
 
-async function respondToConnection(
-  otherId: UUID,
-  status: Extract<ConnectionStatus, 'connected' | 'declined'>,
-): Promise<Connection> {
-  const me = await getCurrentParentId();
-  if (otherId === me) throw new Error('Cannot respond to yourself');
-  const [a, b] = me < otherId ? [me, otherId] : [otherId, me];
-  const { data, error } = await supabase
-    .from('connections')
-    .update({ status, responded_at: new Date().toISOString() })
-    .eq('parent_a', a)
-    .eq('parent_b', b)
-    .eq('status', 'pending')
-    .neq('initiated_by', me)
-    .select()
-    .single();
+async function respondToConnection(otherId: UUID, accept: boolean): Promise<Connection> {
+  const { data, error } = await supabase.rpc('respond_connection', { other: otherId, accept });
   if (error) throw error;
   return data as Connection;
 }
 
 async function acceptConnection(otherId: UUID): Promise<Connection> {
-  return respondToConnection(otherId, 'connected');
+  const connection = await respondToConnection(otherId, true);
+  return connection;
 }
 
 async function declineConnection(otherId: UUID): Promise<Connection> {
-  return respondToConnection(otherId, 'declined');
+  return respondToConnection(otherId, false);
+}
+
+async function cancelConnectionRequest(otherId: UUID): Promise<void> {
+  const { error } = await supabase.rpc('cancel_connection_request', { other: otherId });
+  if (error) throw error;
 }
 
 async function removeConnection(otherId: UUID): Promise<void> {
-  const me = await getCurrentParentId();
-  const [a, b] = me < otherId ? [me, otherId] : [otherId, me];
-  const { error } = await supabase.from('connections').delete().eq('parent_a', a).eq('parent_b', b);
+  const { error } = await supabase.rpc('remove_connection', { other: otherId });
   if (error) throw error;
 }
 
 async function blockConnection(otherId: UUID): Promise<void> {
-  const me = await getCurrentParentId();
-  const [a, b] = me < otherId ? [me, otherId] : [otherId, me];
-  const { data: existing } = await supabase.from('connections').select('id').eq('parent_a', a).eq('parent_b', b).maybeSingle();
-  if (existing) {
-    const { error } = await supabase.from('connections').update({ status: 'blocked', responded_at: new Date().toISOString() }).eq('id', existing.id);
-    if (error) throw error;
-    return;
-  }
-  const { error } = await supabase.from('connections').insert({ parent_a: a, parent_b: b, status: 'blocked', initiated_by: me, responded_at: new Date().toISOString() });
+  const { error } = await supabase.rpc('block_parent', { other: otherId });
   if (error) throw error;
+}
+
+async function unblockParent(otherId: UUID): Promise<void> {
+  const { error } = await supabase.rpc('unblock_parent', { other: otherId });
+  if (error) throw error;
+}
+
+async function getIncomingConnectionCount(): Promise<number> {
+  const me = await getCurrentParentId();
+  const { count, error } = await supabase
+    .from('connections')
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'pending')
+    .neq('initiated_by', me);
+  if (error) throw error;
+  return count ?? 0;
+}
+
+async function getBlockedParents(): Promise<BlockedParent[]> {
+  const { data, error } = await supabase.rpc('blocked_parents');
+  if (error) throw error;
+  return (data ?? []) as BlockedParent[];
+}
+
+async function getSuggestedConnections(limit = 8): Promise<SuggestedConnection[]> {
+  const { data, error } = await supabase.rpc('suggested_connections', { p_limit: limit });
+  if (error) throw error;
+  return (data ?? []) as SuggestedConnection[];
+}
+
+async function getConnectionInvites(): Promise<ConnectionInvite[]> {
+  const { data, error } = await supabase
+    .from('connection_invites')
+    .select('*')
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as ConnectionInvite[];
+}
+
+async function createConnectionInvite(maxUses = 10): Promise<ConnectionInvite> {
+  const { data, error } = await supabase.rpc('create_connection_invite', { p_max_uses: maxUses });
+  if (error) throw error;
+  return data as ConnectionInvite;
+}
+
+async function revokeConnectionInvite(inviteId: UUID): Promise<void> {
+  const { error } = await supabase.rpc('revoke_connection_invite', { invite_id: inviteId });
+  if (error) throw error;
+}
+
+async function previewConnectionInvite(reference: string): Promise<ConnectionInvitePreview> {
+  const { data, error } = await supabase.rpc('preview_connection_invite', { p_reference: reference.trim() });
+  if (error) throw error;
+  return data as ConnectionInvitePreview;
+}
+
+async function redeemConnectionInvite(reference: string): Promise<Connection> {
+  const { data, error } = await supabase.rpc('redeem_connection_invite', { p_reference: reference.trim() });
+  if (error) throw error;
+  return data as Connection;
+}
+
+async function setConnectionPreferences(
+  otherId: UUID,
+  preference: Pick<ConnectionPreference, 'favorite' | 'muted' | 'location_visible' | 'note'>,
+): Promise<ConnectionPreference> {
+  const { data, error } = await supabase.rpc('set_connection_preferences', {
+    other: otherId,
+    p_favorite: preference.favorite,
+    p_muted: preference.muted,
+    p_location_visible: preference.location_visible,
+    p_note: preference.note ?? '',
+  });
+  if (error) throw error;
+  return data as ConnectionPreference;
+}
+
+async function getConnectionCircles(): Promise<ConnectionCircle[]> {
+  const { data, error } = await supabase
+    .from('connection_circles')
+    .select('*, members:connection_circle_members(parent_id)')
+    .order('created_at');
+  if (error) throw error;
+  return (data ?? []).map((row: Record<string, unknown>) => ({
+    id: row.id as UUID,
+    owner_id: row.owner_id as UUID,
+    name: row.name as string,
+    emoji: row.emoji as string,
+    created_at: row.created_at as string,
+    updated_at: row.updated_at as string,
+    memberIds: ((row.members as { parent_id: UUID }[] | null) ?? []).map((member) => member.parent_id),
+  }));
+}
+
+async function createConnectionCircle(name: string, emoji: string): Promise<ConnectionCircle> {
+  const me = await getCurrentParentId();
+  const { data, error } = await supabase
+    .from('connection_circles')
+    .insert({ owner_id: me, name: name.trim(), emoji })
+    .select()
+    .single();
+  if (error) throw error;
+  return { ...(data as Omit<ConnectionCircle, 'memberIds'>), memberIds: [] };
+}
+
+async function deleteConnectionCircle(circleId: UUID): Promise<void> {
+  const { error } = await supabase.from('connection_circles').delete().eq('id', circleId);
+  if (error) throw error;
+}
+
+async function setConnectionCircleMembers(circleId: UUID, memberIds: UUID[]): Promise<void> {
+  const { error } = await supabase.rpc('set_circle_members', { p_circle: circleId, p_members: memberIds });
+  if (error) throw error;
+}
+
+async function getMyPhone(): Promise<string | null> {
+  const { data, error } = await supabase.rpc('get_my_phone');
+  if (error) throw error;
+  return (data as string | null) ?? null;
+}
+
+async function setMyPhone(phone: string | null): Promise<string | null> {
+  const { data, error } = await supabase.rpc('set_my_phone', { p_phone: phone });
+  if (error) throw error;
+  return (data as string | null) ?? null;
+}
+
+async function getContactExchange(otherId: UUID): Promise<ContactExchange> {
+  const { data, error } = await supabase.rpc('get_contact_exchange', { other: otherId });
+  if (error) throw error;
+  return data as ContactExchange;
+}
+
+async function setContactShare(otherId: UUID, enabled: boolean): Promise<void> {
+  const { error } = await supabase.rpc('set_contact_share', { other: otherId, enabled });
+  if (error) throw error;
+}
+
+async function submitParentReport(otherId: UUID, reason: ReportReason, details: string): Promise<UUID> {
+  const { data, error } = await supabase.rpc('submit_parent_report', {
+    other: otherId,
+    p_reason: reason,
+    p_details: details,
+  });
+  if (error) throw error;
+  return data as UUID;
+}
+
+async function getConnectionNotificationPreferences(): Promise<ConnectionNotificationPreferences> {
+  const me = await getCurrentParentId();
+  const { error: insertError } = await supabase
+    .from('parent_notification_preferences')
+    .upsert({ parent_id: me }, { onConflict: 'parent_id', ignoreDuplicates: true });
+  if (insertError) throw insertError;
+  const { data, error } = await supabase
+    .from('parent_notification_preferences')
+    .select('*')
+    .eq('parent_id', me)
+    .single();
+  if (error) throw error;
+  return data as ConnectionNotificationPreferences;
+}
+
+async function updateConnectionNotificationPreferences(
+  preference: Pick<ConnectionNotificationPreferences, 'connection_requests' | 'connection_acceptances' | 'invite_redemptions'>,
+): Promise<ConnectionNotificationPreferences> {
+  const me = await getCurrentParentId();
+  const { data, error } = await supabase
+    .from('parent_notification_preferences')
+    .upsert({ parent_id: me, ...preference, updated_at: new Date().toISOString() })
+    .select()
+    .single();
+  if (error) throw error;
+  return data as ConnectionNotificationPreferences;
 }
 
 // ─────── calendar ───────
@@ -971,8 +1139,30 @@ export const data = {
   requestConnection,
   acceptConnection,
   declineConnection,
+  cancelConnectionRequest,
   removeConnection,
   blockConnection,
+  unblockParent,
+  getIncomingConnectionCount,
+  getBlockedParents,
+  getSuggestedConnections,
+  getConnectionInvites,
+  createConnectionInvite,
+  revokeConnectionInvite,
+  previewConnectionInvite,
+  redeemConnectionInvite,
+  setConnectionPreferences,
+  getConnectionCircles,
+  createConnectionCircle,
+  deleteConnectionCircle,
+  setConnectionCircleMembers,
+  getMyPhone,
+  setMyPhone,
+  getContactExchange,
+  setContactShare,
+  submitParentReport,
+  getConnectionNotificationPreferences,
+  updateConnectionNotificationPreferences,
   createPost,
   deletePost,
   getCalendarEvents,

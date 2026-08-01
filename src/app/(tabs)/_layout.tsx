@@ -1,5 +1,6 @@
-import { useEffect } from 'react';
-import { View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { AppState, View } from 'react-native';
+import * as Notifications from 'expo-notifications';
 import { Slot, usePathname } from 'expo-router';
 import Animated, {
   useAnimatedStyle,
@@ -10,6 +11,10 @@ import { colors } from '@/lib/constants';
 import { RouterTabBar } from '@/components/ui';
 import { InterestSheetHost } from '@/components/plans/InterestSheet';
 import { useVisibilityStore } from '@/store/visibility';
+import { data } from '@/lib/data';
+import { supabase } from '@/lib/supabase';
+import { registerConnectionPushToken } from '@/lib/connection-push';
+import { useCurrentParentId } from '@/hooks/useCurrentParentId';
 
 /**
  * Tabs group layout — every (tabs)/* route renders inside this shell.
@@ -22,6 +27,9 @@ import { useVisibilityStore } from '@/store/visibility';
  */
 export default function TabsLayout() {
   const pathname = usePathname();
+  const myId = useCurrentParentId();
+  const [villageBadge, setVillageBadge] = useState(0);
+  const deliveredNotificationIds = useRef(new Set<string>());
   const opacity = useSharedValue(1);
   const rise = useSharedValue(0);
 
@@ -29,7 +37,94 @@ export default function TabsLayout() {
   // so the header chips reflect the DB instead of a hardcoded default.
   useEffect(() => {
     useVisibilityStore.getState().hydrate();
+    registerConnectionPushToken().catch((cause) => {
+      console.warn('push registration failed', cause);
+    });
   }, []);
+
+  const refreshVillageBadge = useCallback(() => {
+    data.getIncomingConnectionCount()
+      .then(setVillageBadge)
+      .catch(() => setVillageBadge(0));
+  }, []);
+
+  const deliverConnectionNotification = useCallback(async (notification: {
+    id: string;
+    title: string;
+    body: string;
+    url: string;
+  }) => {
+    if (deliveredNotificationIds.current.has(notification.id)) return;
+    const permission = await Notifications.getPermissionsAsync();
+    if (permission.status !== Notifications.PermissionStatus.GRANTED) return;
+    deliveredNotificationIds.current.add(notification.id);
+    try {
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: notification.title,
+          body: notification.body,
+          data: { url: notification.url },
+        },
+        trigger: null,
+      });
+      await supabase
+        .from('connection_notifications')
+        .update({ read_at: new Date().toISOString() })
+        .eq('id', notification.id);
+    } catch (cause) {
+      deliveredNotificationIds.current.delete(notification.id);
+      console.warn('connection notification delivery failed', cause);
+    }
+  }, []);
+
+  const deliverUnreadConnectionNotifications = useCallback(async () => {
+    const { data: rows, error } = await supabase
+      .from('connection_notifications')
+      .select('id, title, body, url')
+      .is('read_at', null)
+      .order('created_at', { ascending: true })
+      .limit(10);
+    if (error) throw error;
+    for (const row of rows ?? []) await deliverConnectionNotification(row);
+  }, [deliverConnectionNotification]);
+
+  useEffect(() => {
+    if (!myId) return;
+    refreshVillageBadge();
+    void deliverUnreadConnectionNotifications().catch((cause) => {
+      console.warn('connection notification sync failed', cause);
+    });
+    const channel = supabase
+      .channel(`village-badge-${myId}`)
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'connections', filter: `parent_a=eq.${myId}`,
+      }, refreshVillageBadge)
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'connections', filter: `parent_b=eq.${myId}`,
+      }, refreshVillageBadge)
+      .on('postgres_changes', {
+        event: 'INSERT', schema: 'public', table: 'connection_notifications', filter: `recipient_id=eq.${myId}`,
+      }, ({ new: row }) => {
+        const notification = row as { id: string; title: string; body: string; url: string };
+        void deliverConnectionNotification(notification);
+      })
+      .subscribe();
+    const refresh = () => {
+      refreshVillageBadge();
+      void deliverUnreadConnectionNotifications().catch((cause) => {
+        console.warn('connection notification sync failed', cause);
+      });
+    };
+    const interval = setInterval(refresh, 30_000);
+    const appState = AppState.addEventListener('change', (state) => {
+      if (state === 'active') refresh();
+    });
+    return () => {
+      clearInterval(interval);
+      appState.remove();
+      void supabase.removeChannel(channel);
+    };
+  }, [deliverConnectionNotification, deliverUnreadConnectionNotifications, myId, refreshVillageBadge]);
 
   useEffect(() => {
     opacity.value = 0;
@@ -48,7 +143,7 @@ export default function TabsLayout() {
       <Animated.View style={[{ flex: 1 }, transition]}>
         <Slot />
       </Animated.View>
-      <RouterTabBar badges={{ buzz: 4 }} />
+      <RouterTabBar badges={{ you: villageBadge }} />
       <InterestSheetHost />
     </View>
   );

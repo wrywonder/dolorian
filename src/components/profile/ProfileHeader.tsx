@@ -93,7 +93,7 @@ export function ProfileHeader({
             justifyContent: 'center',
           }}
         >
-          <Icon name="gear" size={18} color={colors.dark} weight={1.8} />
+          <Icon name={isSelf ? 'gear' : 'ellipsis'} size={18} color={colors.dark} weight={1.8} />
         </Pressable>
       </View>
 

@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
-import { ScrollView, Text, View } from 'react-native';
-import { useFocusEffect } from 'expo-router';
+import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
+import { router, useFocusEffect } from 'expo-router';
 import { colors, fonts } from '@/lib/constants';
 import { data } from '@/lib/data';
 import { Skeleton } from '@/components/ui';
@@ -20,17 +20,29 @@ type ProfileBodyProps = {
 export function ProfileBody({ parentId, onSettings }: ProfileBodyProps) {
   const myId = useCurrentParentId();
   const [view, setView] = useState<ProfileView | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
       const result = await data.getProfile(parentId);
+      if (!result) throw new Error('This profile is not available.');
       setView(result);
+      setError(null);
     } catch (e) {
-      console.warn('profile load failed', e);
+      setError(e instanceof Error ? e.message : 'Could not load this profile.');
     }
   }, [parentId]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  if (!view && error) {
+    return (
+      <View style={{ flex: 1, paddingHorizontal: 28, alignItems: 'center', justifyContent: 'center', gap: 14, backgroundColor: colors.cream }}>
+        <Text selectable style={{ fontFamily: fonts.serifRegular, fontSize: 25, color: colors.dark, textAlign: 'center' }}>{error}</Text>
+        <Pressable onPress={() => router.canGoBack() ? router.back() : router.replace('/')}><Text style={{ fontFamily: fonts.sansExtra, fontSize: 12, color: colors.terracotta }}>go back →</Text></Pressable>
+      </View>
+    );
+  }
 
   if (!view) {
     return (
@@ -48,6 +60,24 @@ export function ProfileBody({ parentId, onSettings }: ProfileBodyProps) {
   const status = view.connectionStatus;
   const pendingInitiatedByMe = view.connectionInitiatedByMe === true;
 
+  const openActions = () => {
+    if (isSelf) { onSettings?.(); return; }
+    const actions: Parameters<typeof Alert.alert>[2] = [
+      { text: 'Cancel', style: 'cancel' },
+      ...(status === 'connected' ? [{ text: 'Connection settings', onPress: () => router.push(`/connection-manage/${parentId}` as never) }] : []),
+      { text: 'Report a concern', onPress: () => router.push(`/report/${parentId}` as never) },
+      { text: 'Block parent', style: 'destructive', onPress: () => Alert.alert(
+        `Block ${view.parent.display_name}?`,
+        'They won’t be able to find you or see your activity.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Block', style: 'destructive', onPress: () => data.blockConnection(parentId).then(() => router.replace('/village?tab=blocked' as never)).catch((cause) => setError(cause instanceof Error ? cause.message : 'Could not block this parent.')) },
+        ],
+      ) },
+    ];
+    Alert.alert(view.parent.display_name, 'Manage privacy and safety', actions);
+  };
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.cream }}>
       <ScrollView
@@ -59,7 +89,7 @@ export function ProfileBody({ parentId, onSettings }: ProfileBodyProps) {
           mutualFriendCount={view.mutualFriendCount}
           connectionStatus={status}
           isSelf={isSelf}
-          onSettingsPress={onSettings}
+          onSettingsPress={openActions}
         />
 
         <View
@@ -132,7 +162,7 @@ export function ProfileBody({ parentId, onSettings }: ProfileBodyProps) {
           <ActivityChipsRow chips={view.activityChips} />
 
           {!isSelf ? (
-            <PhoneSwapRow enabled={status === 'connected'} />
+            <PhoneSwapRow enabled={status === 'connected'} onPress={status === 'connected' ? () => router.push(`/connection-manage/${parentId}` as never) : undefined} />
           ) : null}
         </View>
       </ScrollView>

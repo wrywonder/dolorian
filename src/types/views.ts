@@ -4,7 +4,7 @@
  */
 
 import type { Activity, InteractionState } from './activities';
-import type { Connection, ConnectionStatus } from './connections';
+import type { Connection, ConnectionPreference, ConnectionStatus } from './connections';
 import type { Kid } from './kids';
 import type { Parent } from './parents';
 import type { Post, PostComment } from './posts';
@@ -63,6 +63,8 @@ export type ConnectionView = {
   connection: Connection;
   parent: Parent;
   incoming: boolean;
+  outgoing: boolean;
+  preference: ConnectionPreference;
 };
 
 export type ResolvedPrompt<T extends PromptType = PromptType> = {
