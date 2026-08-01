@@ -84,6 +84,7 @@ export type ConnectionNotificationPreferences = {
   connection_requests: boolean;
   connection_acceptances: boolean;
   invite_redemptions: boolean;
+  plan_invitations: boolean;
   updated_at: Timestamp;
 };
 

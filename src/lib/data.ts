@@ -7,6 +7,7 @@
  */
 
 import { supabase } from '@/lib/supabase';
+import { deliverVillagePushBestEffort } from '@/lib/push-delivery';
 import type {
   Activity,
   ActivityInteraction,
@@ -29,6 +30,9 @@ import type {
   Kid,
   NearbyParent,
   Parent,
+  PlanInput,
+  PlanLinkPreview,
+  PlanParticipant,
   Post,
   PostComment,
   ProfileView,
@@ -270,18 +274,18 @@ async function getUpcomingActivities(): Promise<ActivitySocialProof[]> {
     .select('*, venue:venues(*)')
     .eq('published', true)
     .order('starts_at', { ascending: true });
-  if (error || !activities) return [];
+  if (error) throw error;
+  if (!activities) return [];
 
   const activityIds = activities.map((a: Record<string, unknown>) => a.id as string);
   if (activityIds.length === 0) return [];
 
-  const { data: interactions } = await supabase
-    .from('activity_interactions')
-    .select(`*, parent:parents(${PARENT_PUBLIC_COLUMNS})`)
-    .in('activity_id', activityIds);
+  const { data: interactions, error: participantError } = await supabase
+    .rpc('plan_participants', { p_plan_ids: activityIds });
+  if (participantError) throw participantError;
 
   return activities.map((row: Record<string, unknown>) =>
-    buildSocialProof(row, interactions ?? [], me),
+    buildSocialProof(row, (interactions ?? []) as PlanParticipant[], me),
   );
 }
 
@@ -298,19 +302,18 @@ async function getDiscoveredActivityPreviews(): Promise<ActivitySocialProof[]> {
   const activityIds = activities.map((a: Record<string, unknown>) => a.id as string);
   if (activityIds.length === 0) return [];
 
-  const { data: interactions } = await supabase
-    .from('activity_interactions')
-    .select(`*, parent:parents(${PARENT_PUBLIC_COLUMNS})`)
-    .in('activity_id', activityIds);
+  const { data: interactions, error: participantError } = await supabase
+    .rpc('plan_participants', { p_plan_ids: activityIds });
+  if (participantError) throw participantError;
 
   return activities.map((row: Record<string, unknown>) =>
-    buildSocialProof(row, interactions ?? [], me),
+    buildSocialProof(row, (interactions ?? []) as PlanParticipant[], me),
   );
 }
 
 function buildSocialProof(
   row: Record<string, unknown>,
-  allInteractions: Record<string, unknown>[],
+  allInteractions: PlanParticipant[],
   me: UUID,
 ): ActivitySocialProof {
   const activity: Activity = {
@@ -326,32 +329,135 @@ function buildSocialProof(
     confidence_score: (row.confidence_score as number) ?? null,
     created_by: (row.created_by as string) ?? null,
     published: row.published as boolean,
+    visibility: (row.visibility as Activity['visibility']) ?? 'public',
+    location_name: (row.location_name as string) ?? null,
+    location_address: (row.location_address as string) ?? null,
+    external_url: (row.external_url as string) ?? null,
+    cover_image_url: (row.cover_image_url as string) ?? null,
+    all_day: (row.all_day as boolean) ?? false,
+    updated_at: (row.updated_at as string) ?? (row.created_at as string),
+    cancelled_at: (row.cancelled_at as string) ?? null,
     created_at: row.created_at as string,
   };
   const venue = (row.venue as Venue) ?? null;
 
   const rows = allInteractions.filter(
-    (i) => (i.activity_id as string) === activity.id,
+    (i) => i.plan_id === activity.id,
   );
 
-  const interestedConnections: Parent[] = [];
-  const goingConnections: Parent[] = [];
+  const interestedConnections: PlanParticipant[] = [];
+  const goingConnections: PlanParticipant[] = [];
+  const outConnections: PlanParticipant[] = [];
   let myState: InteractionState | null = null;
 
   for (const i of rows) {
-    const parentId = i.parent_id as string;
-    const state = i.state as InteractionState;
+    const parentId = i.parent_id;
+    const state = i.state;
     if (parentId === me) {
       myState = state;
       continue;
     }
-    const parent = i.parent as Parent | null;
-    if (!parent) continue;
-    if (state === 'interested') interestedConnections.push(parent);
-    else if (state === 'going' || state === 'attended') goingConnections.push(parent);
+    if (state === 'interested') interestedConnections.push(i);
+    else if (state === 'going' || state === 'attended') goingConnections.push(i);
+    else if (state === 'out') outConnections.push(i);
   }
 
-  return { activity, venue, interestedConnections, goingConnections, myState };
+  return { activity, venue, interestedConnections, goingConnections, outConnections, myState };
+}
+
+async function getPlan(planId: UUID): Promise<ActivitySocialProof | null> {
+  const me = await getCurrentParentId();
+  const { data: plan, error } = await supabase
+    .from('activities')
+    .select('*, venue:venues(*)')
+    .eq('id', planId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!plan) return null;
+  const { data: participants, error: participantError } = await supabase
+    .rpc('plan_participants', { p_plan_ids: [planId] });
+  if (participantError) throw participantError;
+  return buildSocialProof(plan as Record<string, unknown>, (participants ?? []) as PlanParticipant[], me);
+}
+
+async function getPlanInviteeIds(planId: UUID): Promise<UUID[]> {
+  const { data: rows, error } = await supabase
+    .from('plan_invites')
+    .select('invited_parent_id')
+    .eq('plan_id', planId);
+  if (error) throw error;
+  return (rows ?? []).map((row) => row.invited_parent_id as UUID);
+}
+
+type PlanMutationResult = {
+  plan: Activity;
+  notified_parent_ids: UUID[];
+};
+
+function planRpcArgs(input: PlanInput) {
+  return {
+    p_name: input.name,
+    p_description: input.description,
+    p_emoji: input.emoji,
+    p_starts_at: input.starts_at,
+    p_ends_at: input.ends_at,
+    p_all_day: input.all_day,
+    p_visibility: input.visibility,
+    p_invited_parent_ids: input.invited_parent_ids,
+    p_location_name: input.location_name,
+    p_location_address: input.location_address,
+    p_external_url: input.external_url || null,
+    p_cover_image_url: input.cover_image_url || null,
+  };
+}
+
+async function createPlan(input: PlanInput): Promise<Activity> {
+  const { data: result, error } = await supabase.rpc('create_plan', planRpcArgs(input));
+  if (error) throw error;
+  const payload = result as PlanMutationResult;
+  await Promise.all((payload.notified_parent_ids ?? []).map((parentId) =>
+    deliverVillagePushBestEffort(parentId, 'plan_invite')));
+  return payload.plan;
+}
+
+async function updatePlan(planId: UUID, input: PlanInput): Promise<Activity> {
+  const { data: result, error } = await supabase.rpc('update_plan', {
+    p_plan: planId,
+    ...planRpcArgs(input),
+  });
+  if (error) throw error;
+  const payload = result as PlanMutationResult;
+  await Promise.all((payload.notified_parent_ids ?? []).map((parentId) =>
+    deliverVillagePushBestEffort(parentId, 'plan_invite')));
+  return payload.plan;
+}
+
+async function cancelPlan(planId: UUID): Promise<void> {
+  const { error } = await supabase.rpc('cancel_plan', { p_plan: planId });
+  if (error) throw error;
+}
+
+async function setPlanRsvp(planId: UUID, state: 'interested' | 'going' | 'out'): Promise<ActivityInteraction> {
+  const { data: result, error } = await supabase.rpc('set_plan_rsvp', {
+    p_plan: planId,
+    p_state: state,
+  });
+  if (error) throw error;
+  return result as ActivityInteraction;
+}
+
+async function clearPlanRsvp(planId: UUID): Promise<void> {
+  const { error } = await supabase.rpc('clear_plan_rsvp', { p_plan: planId });
+  if (error) throw error;
+}
+
+async function importPlanLink(url: string): Promise<PlanLinkPreview> {
+  const { data: result, error } = await supabase.functions.invoke('plan-link-preview', {
+    body: { url },
+  });
+  if (error) throw error;
+  if (result?.error) throw new Error(result.error as string);
+  return result as PlanLinkPreview;
 }
 
 async function updateActivityInteraction(
@@ -857,12 +963,14 @@ async function getConnectionViews(): Promise<ConnectionView[]> {
 async function requestConnection(otherId: UUID): Promise<Connection> {
   const { data, error } = await supabase.rpc('request_connection', { other: otherId });
   if (error) throw error;
+  await deliverVillagePushBestEffort(otherId, 'connection_request');
   return data as Connection;
 }
 
 async function respondToConnection(otherId: UUID, accept: boolean): Promise<Connection> {
   const { data, error } = await supabase.rpc('respond_connection', { other: otherId, accept });
   if (error) throw error;
+  if (accept) await deliverVillagePushBestEffort(otherId, 'connection_accepted');
   return data as Connection;
 }
 
@@ -947,7 +1055,11 @@ async function previewConnectionInvite(reference: string): Promise<ConnectionInv
 async function redeemConnectionInvite(reference: string): Promise<Connection> {
   const { data, error } = await supabase.rpc('redeem_connection_invite', { p_reference: reference.trim() });
   if (error) throw error;
-  return data as Connection;
+  const connection = data as Connection;
+  const me = await getCurrentParentId();
+  const inviter = connection.parent_a === me ? connection.parent_b : connection.parent_a;
+  await deliverVillagePushBestEffort(inviter, 'invite_redeemed');
+  return connection;
 }
 
 async function setConnectionPreferences(
@@ -1052,7 +1164,7 @@ async function getConnectionNotificationPreferences(): Promise<ConnectionNotific
 }
 
 async function updateConnectionNotificationPreferences(
-  preference: Pick<ConnectionNotificationPreferences, 'connection_requests' | 'connection_acceptances' | 'invite_redemptions'>,
+  preference: Pick<ConnectionNotificationPreferences, 'connection_requests' | 'connection_acceptances' | 'invite_redemptions' | 'plan_invitations'>,
 ): Promise<ConnectionNotificationPreferences> {
   const me = await getCurrentParentId();
   const { data, error } = await supabase
@@ -1119,6 +1231,14 @@ export const data = {
   dismissPrompt,
   getUpcomingActivities,
   getDiscoveredActivityPreviews,
+  getPlan,
+  getPlanInviteeIds,
+  createPlan,
+  updatePlan,
+  cancelPlan,
+  setPlanRsvp,
+  clearPlanRsvp,
+  importPlanLink,
   updateActivityInteraction,
   getNearbyParents,
   getVisibleConnectionAvatars,

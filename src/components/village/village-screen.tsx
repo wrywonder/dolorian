@@ -42,6 +42,7 @@ const DEFAULT_NOTIFICATIONS: ConnectionNotificationPreferences = {
   connection_requests: true,
   connection_acceptances: true,
   invite_redemptions: true,
+  plan_invitations: true,
   updated_at: new Date(0).toISOString(),
 };
 
@@ -150,7 +151,7 @@ export function VillageScreen() {
   };
 
   const updateNotification = async (
-    key: 'connection_requests' | 'connection_acceptances' | 'invite_redemptions',
+    key: 'connection_requests' | 'connection_acceptances' | 'invite_redemptions' | 'plan_invitations',
     value: boolean,
   ) => {
     const next = { ...notifications, [key]: value };
@@ -323,6 +324,7 @@ export function VillageScreen() {
                 <ToggleRow label="New connection requests" value={notifications.connection_requests} onValueChange={(value) => updateNotification('connection_requests', value)} />
                 <ToggleRow label="Accepted requests" value={notifications.connection_acceptances} onValueChange={(value) => updateNotification('connection_acceptances', value)} />
                 <ToggleRow label="Invite redemptions" value={notifications.invite_redemptions} onValueChange={(value) => updateNotification('invite_redemptions', value)} />
+                <ToggleRow label="Plan invitations" value={notifications.plan_invitations} onValueChange={(value) => updateNotification('plan_invitations', value)} />
               </Section>
             </>
           ) : null}

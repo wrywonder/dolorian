@@ -82,6 +82,8 @@ export default function TabsLayout() {
       .from('connection_notifications')
       .select('id, title, body, url')
       .is('read_at', null)
+      .is('push_sent_at', null)
+      .lt('created_at', new Date(Date.now() - 5_000).toISOString())
       .order('created_at', { ascending: true })
       .limit(10);
     if (error) throw error;
@@ -104,9 +106,15 @@ export default function TabsLayout() {
       }, refreshVillageBadge)
       .on('postgres_changes', {
         event: 'INSERT', schema: 'public', table: 'connection_notifications', filter: `recipient_id=eq.${myId}`,
-      }, ({ new: row }) => {
-        const notification = row as { id: string; title: string; body: string; url: string };
-        void deliverConnectionNotification(notification);
+      }, () => {
+        // Give the remote delivery function time to claim the notification.
+        // If no registered device received it, the local foreground fallback
+        // will still surface it on the next sync.
+        setTimeout(() => {
+          void deliverUnreadConnectionNotifications().catch((cause) => {
+            console.warn('connection notification sync failed', cause);
+          });
+        }, 6_000);
       })
       .subscribe();
     const refresh = () => {

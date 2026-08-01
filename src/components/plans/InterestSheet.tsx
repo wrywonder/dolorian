@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import {
   Modal,
   Pressable,
@@ -30,12 +30,15 @@ export function InterestSheetHost() {
   const payload = useInterestSheet((s) => s.payload);
   const dismiss = useInterestSheet((s) => s.dismiss);
   const { height } = useWindowDimensions();
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const translateY = useSharedValue(height);
   const backdropOpacity = useSharedValue(0);
 
   useEffect(() => {
     if (payload) {
+      setError(null);
       translateY.value = withTiming(0, { duration: 280, easing: Easing.out(Easing.cubic) });
       backdropOpacity.value = withTiming(1, { duration: 200 });
     } else {
@@ -54,14 +57,23 @@ export function InterestSheetHost() {
   if (!payload) return null;
 
   const handlePick = async (next: InteractionState | null) => {
+    if (saving) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-    if (next === null) {
-      await data.updateActivityInteraction(payload.activityId, 'skipped');
-    } else {
-      await data.updateActivityInteraction(payload.activityId, next);
+    setSaving(true);
+    setError(null);
+    try {
+      if (next === null) {
+        await data.clearPlanRsvp(payload.activityId);
+      } else {
+        await data.setPlanRsvp(payload.activityId, next as 'interested' | 'going' | 'out');
+      }
+      payload.onChanged(next);
+      dismiss();
+    } catch {
+      setError('Could not update your response. Please try again.');
+    } finally {
+      setSaving(false);
     }
-    payload.onChanged(next);
-    dismiss();
   };
 
   return (
@@ -151,6 +163,7 @@ export function InterestSheetHost() {
             tint="terracotta"
             iconLeft={<Icon name="wave" size={20} color={colors.white} weight={2.4} />}
             selected={payload.currentState === 'going' || payload.currentState === 'attended'}
+            disabled={saving}
             onPress={() => handlePick('going')}
           />
           <SheetButton
@@ -158,15 +171,26 @@ export function InterestSheetHost() {
             tint="sage"
             iconLeft={<Icon name="sparkle" size={18} color={colors.sage} weight={2} />}
             selected={payload.currentState === 'interested'}
+            disabled={saving}
             onPress={() => handlePick('interested')}
+          />
+          <SheetButton
+            label="I’m out"
+            tint="ghost"
+            iconLeft={<Icon name="x" size={17} color={colors.taupe} weight={2} />}
+            selected={payload.currentState === 'out'}
+            disabled={saving}
+            onPress={() => handlePick('out')}
           />
           {payload.currentState && payload.currentState !== 'skipped' ? (
             <SheetButton
               label="Remove"
               tint="ghost"
+              disabled={saving}
               onPress={() => handlePick(null)}
             />
           ) : null}
+          {error ? <Text style={{ fontFamily: fonts.sansSemi, fontSize: 12, lineHeight: 18, color: colors.terracotta }}>{error}</Text> : null}
         </View>
 
         <Pressable
@@ -191,17 +215,19 @@ export function InterestSheetHost() {
 type SheetButtonProps = {
   label: string;
   tint: 'terracotta' | 'sage' | 'ghost';
-  iconLeft?: React.ReactNode;
+  iconLeft?: ReactNode;
   selected?: boolean;
+  disabled?: boolean;
   onPress: () => void;
 };
 
-function SheetButton({ label, tint, iconLeft, selected, onPress }: SheetButtonProps) {
+function SheetButton({ label, tint, iconLeft, selected, disabled, onPress }: SheetButtonProps) {
   const isTerracotta = tint === 'terracotta';
   const isSage = tint === 'sage';
 
   return (
     <Pressable
+      disabled={disabled}
       onPress={onPress}
       style={{
         height: 52,
@@ -218,7 +244,7 @@ function SheetButton({ label, tint, iconLeft, selected, onPress }: SheetButtonPr
         shadowOffset: { width: 0, height: 3 },
         shadowRadius: 0,
         elevation: isTerracotta ? 4 : 0,
-        opacity: selected ? 0.85 : 1,
+        opacity: disabled ? 0.55 : selected ? 0.85 : 1,
       }}
     >
       {iconLeft}
