@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
-  Platform,
   Pressable,
   ScrollView,
   Text,
@@ -17,6 +17,7 @@ import { ProfileCover } from '@/components/profile/profile-cover';
 import { colors, fonts, radii, type AvatarTone } from '@/lib/constants';
 import { data } from '@/lib/data';
 import { useCurrentParentId } from '@/hooks/useCurrentParentId';
+import { supabase } from '@/lib/supabase';
 import {
   uploadKidImage,
   uploadProfileBackground,
@@ -65,12 +66,14 @@ export default function SettingsScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [accountEmail, setAccountEmail] = useState<string | null>(null);
+  const [signingOut, setSigningOut] = useState(false);
 
   useEffect(() => {
     if (!myId) return;
     let active = true;
-    Promise.all([data.getProfile(myId), data.getMyPhone()])
-      .then(([profile, privatePhone]) => {
+    Promise.all([data.getProfile(myId), data.getMyPhone(), supabase.auth.getUser()])
+      .then(([profile, privatePhone, authResult]) => {
         if (!active || !profile) return;
         setDisplayName(profile.parent.display_name);
         setNeighborhood(profile.parent.neighborhood ?? '');
@@ -81,6 +84,7 @@ export default function SettingsScreen() {
         setCoverUrl(profile.parent.profile_background_url);
         setKids(profile.kids.map((kid) => kidDraft(kid)));
         setPhone(privatePhone ?? '');
+        setAccountEmail(authResult.data.user?.email ?? null);
       })
       .catch((cause: unknown) => {
         if (active) setError(cause instanceof Error ? cause.message : 'Could not load your profile');
@@ -214,11 +218,32 @@ export default function SettingsScreen() {
     setPickedCover({ uri: asset.uri, base64: asset.base64 });
   };
 
+  const confirmSignOut = () => {
+    Alert.alert('Sign out of Village?', accountEmail ?? 'You can sign back in anytime with your email.', [
+      { text: 'Stay signed in', style: 'cancel' },
+      {
+        text: 'Sign out',
+        style: 'destructive',
+        onPress: async () => {
+          setSigningOut(true);
+          setError(null);
+          const { error: signOutError } = await supabase.auth.signOut();
+          setSigningOut(false);
+          if (signOutError) {
+            setError(signOutError.message);
+            return;
+          }
+          router.replace('/(auth)/sign-in' as never);
+        },
+      },
+    ]);
+  };
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.cream }} edges={['top', 'bottom']}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={process.env.EXPO_OS === 'ios' ? 'padding' : undefined}
       >
         <View
           style={{
@@ -439,6 +464,18 @@ export default function SettingsScreen() {
             ) : (
               <TerracottaButton label="save changes →" onPress={save} fullWidth style={{ marginTop: 24 }} />
             )}
+
+            <View style={{ height: 1, backgroundColor: colors.rule, marginVertical: 30 }} />
+            <Text style={{ fontFamily: fonts.monoBold, fontSize: 9.5, letterSpacing: 0.7, color: colors.taupe }}>ACCOUNT</Text>
+            <View style={{ marginTop: 8, padding: 14, gap: 10, borderRadius: radii.lg, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.rule }}>
+              <View>
+                <Text style={{ fontFamily: fonts.sansExtra, fontSize: 13, color: colors.dark }}>Signed in as</Text>
+                <Text selectable style={{ paddingTop: 3, fontFamily: fonts.sans, fontSize: 12, color: colors.taupe }}>{accountEmail ?? 'your Village account'}</Text>
+              </View>
+              <Pressable disabled={signingOut} onPress={confirmSignOut} style={{ minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: radii.md, backgroundColor: colors.cream, borderWidth: 1, borderColor: colors.rule }}>
+                {signingOut ? <ActivityIndicator size="small" color={colors.terracotta} /> : <Text style={{ fontFamily: fonts.sansExtra, fontSize: 12, color: colors.terracotta }}>sign out</Text>}
+              </Pressable>
+            </View>
           </ScrollView>
         )}
       </KeyboardAvoidingView>

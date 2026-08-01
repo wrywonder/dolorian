@@ -16,6 +16,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.dolorian.app",
+      "usesAppleSignIn": true,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -37,6 +38,7 @@
       "expo-router",
       "expo-splash-screen",
       "expo-font",
+      "expo-apple-authentication",
       [
         "expo-location",
         {
