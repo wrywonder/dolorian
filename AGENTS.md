@@ -127,3 +127,12 @@ This repo is edited by both tools. To keep handoffs clean:
   obvious which tool did what.
 - Both tools must leave `npm run typecheck` green before committing.
 - Put durable project knowledge **here**, so both tools inherit it.
+
+## Beta tester feedback
+
+- TestFlight feedback goes to `beta@withvillage.app`.
+- Cloudflare Email Routing forwards that alias to Drew's Gmail, where the
+  `Village/TestFlight` filter labels incoming reports and keeps them out of spam.
+- When asked to triage tester feedback, search that Gmail label, group duplicate
+  reports, capture reproduction details, and inspect the relevant app code before
+  proposing or implementing fixes.
