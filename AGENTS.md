@@ -79,6 +79,21 @@ also exist as EAS environment variables (`eas env:create`, or the project's
 Environment Variables page on expo.dev) or release builds ship with an
 unconfigured Supabase client.
 
+## Auth email delivery
+
+- Production auth email is sent through Resend custom SMTP from
+  `Village <login@auth.withvillage.app>`; the verified Resend domain is
+  `auth.withvillage.app`.
+- Keep custom SMTP enabled in Supabase Authentication email settings. SMTP
+  credentials live only in Supabase and Resend — never commit or copy them into
+  `.env` or EAS variables.
+- The app verifies an 8-digit email OTP. Both Supabase templates named
+  **Confirm sign up** and **Magic link or OTP** must include `{{ .Token }}` and
+  must not send `{{ .ConfirmationURL }}` as the primary sign-in action.
+- Supabase is configured for an 8-digit OTP with a 3600-second expiry. Keep
+  `validateLoginCode` and the sign-in screen in sync if that server setting
+  changes.
+
 ## Conventions
 
 - **TypeScript is strict** (`noUncheckedIndexedAccess`, `noImplicitOverride`,

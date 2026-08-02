@@ -56,7 +56,11 @@ test('turns Supabase authentication failures into useful recovery copy', () => {
   assert.match(friendlyAuthError(new Error('Email rate limit exceeded')), /wait a minute/i);
   assert.match(friendlyAuthError({ message: 'Token has expired' }), /send yourself a new one/i);
   assert.match(friendlyAuthError({ message: 'Invalid OTP token' }), /doesn’t look right/i);
-  assert.match(friendlyAuthError(new Error('Email address not authorized')), /continue with Apple/i);
+  assert.match(friendlyAuthError(new Error('Email address not authorized')), /couldn’t send that code/i);
+  assert.match(
+    friendlyAuthError({ message: '{"code":"unexpected_failure","status":500}' }),
+    /try again in a moment/i,
+  );
   assert.match(friendlyAuthError(new Error('Missing identity token')), /Apple couldn’t securely/i);
   assert.match(friendlyAuthError(new TypeError('Network request failed')), /internet/i);
   assert.equal(friendlyAuthError(null, 'Fallback message'), 'Fallback message');

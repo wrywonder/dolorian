@@ -64,8 +64,12 @@ export function friendlyAuthError(cause: unknown, fallback = 'Something went wro
   if (message.includes('invalid login credentials')) {
     return 'That password doesn’t match the review account.';
   }
-  if (message.includes('email address not authorized') || message.includes('sending confirmation email')) {
-    return 'Email sign-in is temporarily unavailable. Continue with Apple instead.';
+  if (
+    message.includes('email address not authorized')
+    || message.includes('sending confirmation email')
+    || message.includes('unexpected_failure')
+  ) {
+    return 'Village couldn’t send that code. Try again in a moment or continue with Apple.';
   }
   if (message.includes('identity token')) {
     return 'Apple couldn’t securely finish the sign-in. Please try again.';
