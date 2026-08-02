@@ -64,12 +64,15 @@ export default function YouScreen() {
             label="ADD A COVER PHOTO IN PROFILE SETTINGS"
           />
           <FadeOverlay direction="bottom" intensity={0.68} transparentUntil={0.32} />
-          <View style={{ position: 'absolute', top: 14, left: 18, right: 18, flexDirection: 'row', justifyContent: 'space-between' }}>
-            <View style={{ paddingHorizontal: 11, paddingVertical: 7, borderRadius: radii.pill, backgroundColor: 'rgba(255,255,255,0.9)' }}>
-              <Text style={{ fontFamily: fonts.monoBold, fontSize: 10, color: colors.brownMid, letterSpacing: 0.6 }}>YOUR PROFILE</Text>
-            </View>
-            <Pressable onPress={() => router.push('/settings')} style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.92)' }}>
-              <Icon name="gear" size={19} color={colors.dark} />
+          <View style={{ position: 'absolute', top: 14, right: 18 }}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Edit profile"
+              onPress={() => router.push('/settings')}
+              style={{ minHeight: 40, flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 13, borderRadius: radii.pill, backgroundColor: 'rgba(255,255,255,0.92)' }}
+            >
+              <Icon name="pencil" size={16} color={colors.dark} />
+              <Text style={{ fontFamily: fonts.sansExtra, fontSize: 11.5, color: colors.dark }}>edit profile</Text>
             </Pressable>
           </View>
           <View style={{ position: 'absolute', left: 20, right: 20, bottom: 24, flexDirection: 'row', alignItems: 'flex-end', gap: 15 }}>
@@ -85,7 +88,7 @@ export default function YouScreen() {
           </View>
         </View>
 
-        <View style={{ marginTop: -2, paddingHorizontal: 16, paddingTop: 20, gap: 16, backgroundColor: colors.cream, borderTopLeftRadius: 26, borderTopRightRadius: 26 }}>
+        <View style={{ paddingHorizontal: 16, paddingTop: 20, gap: 16, backgroundColor: colors.cream }}>
           {parent.bio ? (
             <Text selectable style={{ fontFamily: fonts.sans, fontSize: 14, lineHeight: 22, color: colors.brownMid }}>
               {parent.bio}
@@ -126,9 +129,9 @@ export default function YouScreen() {
                 actions={<Pressable onPress={() => router.push(`/connection-manage/${item.parent.id}` as never)} hitSlop={10}><Icon name="ellipsis" size={20} color={colors.taupe} /></Pressable>}
               />
             )) : (
-              <Text style={{ fontFamily: fonts.serif, fontSize: 15, color: colors.taupe, paddingVertical: 8 }}>Your connections will appear here.</Text>
+              <Text style={{ fontFamily: fonts.serif, fontSize: 15, color: colors.taupe, paddingHorizontal: 14, paddingVertical: 20 }}>Your connections will appear here.</Text>
             )}
-            <Pressable onPress={() => router.push('/village' as never)} style={{ minHeight: 48, alignItems: 'center', justifyContent: 'center' }}><Text style={{ fontFamily: fonts.sansExtra, fontSize: 11.5, color: colors.terracotta }}>{connected.length ? 'manage your whole village →' : 'invite someone →'}</Text></Pressable>
+            <Pressable onPress={() => router.push('/village' as never)} style={{ minHeight: 48, alignItems: 'center', justifyContent: 'center', borderTopWidth: 1, borderTopColor: colors.rule }}><Text style={{ fontFamily: fonts.sansExtra, fontSize: 11.5, color: colors.terracotta }}>{connected.length ? 'manage your whole village →' : 'invite someone →'}</Text></Pressable>
           </Section>
 
           {profile.kids.length > 0 ? <KidsGrid kids={profile.kids} /> : null}

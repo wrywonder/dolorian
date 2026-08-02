@@ -58,22 +58,25 @@ export function VenuePhoto({
         <Pressable
           onPress={photo.attributionUrl ? openAttribution : undefined}
           hitSlop={6}
+          accessibilityRole={photo.attributionUrl ? 'link' : 'text'}
+          accessibilityLabel={`Photo credit: ${photo.attribution}`}
+          accessibilityHint={photo.attributionUrl ? 'Opens the photo credit' : undefined}
           style={{
             position: 'absolute',
             top: 6,
             right: 6,
-            maxWidth: '78%',
-            paddingHorizontal: 6,
-            paddingVertical: 3,
-            borderRadius: 8,
-            backgroundColor: 'rgba(255,255,255,0.88)',
+            width: 19,
+            height: 19,
+            borderRadius: 10,
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: 'rgba(45,36,27,0.5)',
           }}
         >
           <Text
-            numberOfLines={1}
-            style={{ fontFamily: fonts.sansSemi, fontSize: 7.5, color: 'rgba(45,36,27,0.76)' }}
+            style={{ fontFamily: fonts.sansExtra, fontSize: 11, lineHeight: 13, color: 'rgba(255,255,255,0.96)' }}
           >
-            {photo.attribution}
+            i
           </Text>
         </Pressable>
       ) : null}

@@ -16,6 +16,7 @@ import { AvatarCircle, Icon, PhotoAvatar, TerracottaButton } from '@/components/
 import { ProfileCover } from '@/components/profile/profile-cover';
 import { colors, fonts, radii, type AvatarTone } from '@/lib/constants';
 import { data } from '@/lib/data';
+import { readableError } from '@/lib/error-message';
 import { useCurrentParentId } from '@/hooks/useCurrentParentId';
 import { supabase } from '@/lib/supabase';
 import {
@@ -152,7 +153,7 @@ export default function SettingsScreen() {
       await data.saveMyKids(kidsWithPhotos);
       router.back();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not save your profile');
+      setError(readableError(cause, 'Could not save your profile. Please try again.'));
     } finally {
       setSaving(false);
     }

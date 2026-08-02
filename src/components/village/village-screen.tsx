@@ -202,7 +202,14 @@ export function VillageScreen() {
                 : option.key === 'invites' ? activeInvites.length : 0;
             return (
               <Pressable key={option.key} onPress={() => setTab(option.key)} style={[styles.tab, selected && styles.tabSelected]}>
-                <Text style={[styles.tabText, selected && { color: colors.white }]}>{option.label}{count ? ` ${count}` : ''}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                  <Text style={[styles.tabText, selected && { color: colors.white }]}>{option.label}</Text>
+                  {count ? (
+                    <View style={[styles.tabCount, selected && styles.tabCountSelected]}>
+                      <Text style={[styles.tabCountText, selected && { color: colors.dark }]}>{count}</Text>
+                    </View>
+                  ) : null}
+                </View>
               </Pressable>
             );
           })}
@@ -485,6 +492,9 @@ const styles = {
   tab: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: radii.pill, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.rule } as const,
   tabSelected: { backgroundColor: colors.dark, borderColor: colors.dark } as const,
   tabText: { fontFamily: fonts.sansExtra, fontSize: 10.5, color: colors.brownMid } as const,
+  tabCount: { minWidth: 16, height: 16, paddingHorizontal: 4, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.cream } as const,
+  tabCountSelected: { backgroundColor: colors.white } as const,
+  tabCountText: { fontFamily: fonts.monoBold, fontSize: 9, lineHeight: 11, color: colors.brownMid } as const,
   searchBox: { flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 13, height: 45, borderRadius: radii.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.rule } as const,
   sectionCard: { overflow: 'hidden', borderRadius: radii.lg, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.rule } as const,
   personRow: { minHeight: 68, flexDirection: 'row', alignItems: 'center', gap: 11, paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.rule } as const,
