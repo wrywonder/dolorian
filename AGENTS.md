@@ -133,6 +133,10 @@ This repo is edited by both tools. To keep handoffs clean:
 - TestFlight feedback goes to `beta@withvillage.app`.
 - Cloudflare Email Routing forwards that alias to Drew's Gmail, where the
   `Village/TestFlight` filter labels incoming reports and keeps them out of spam.
+- App Store Connect screenshot and crash feedback is delivered by the
+  `appstore-feedback-webhook` Supabase Edge Function. It verifies Apple's HMAC
+  signature, then uses Resend to alert `beta@withvillage.app` with a link back
+  to the feedback in App Store Connect.
 - When asked to triage tester feedback, search that Gmail label, group duplicate
   reports, capture reproduction details, and inspect the relevant app code before
   proposing or implementing fixes.
