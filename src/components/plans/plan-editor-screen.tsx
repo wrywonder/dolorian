@@ -14,7 +14,7 @@ import { AvatarCircle, Icon, TerracottaButton } from '@/components/ui';
 import { colors, fonts, radii } from '@/lib/constants';
 import { data } from '@/lib/data';
 import { readableError } from '@/lib/error-message';
-import type { ConnectionView, PlanInput, PlanVisibility, UUID } from '@/types';
+import type { ConnectionView, PlanInput, PlanLinkPreview, PlanVisibility, UUID } from '@/types';
 
 const AUDIENCES: { value: PlanVisibility; label: string; detail: string; icon: 'sun' | 'person.2' | 'lock' }[] = [
   { value: 'public', label: 'Public', detail: 'Any signed-in Village parent can discover it.', icon: 'sun' },
@@ -30,6 +30,7 @@ export function PlanEditorScreen() {
   const [loading, setLoading] = useState(editing);
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<PlanLinkPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sourceUrl, setSourceUrl] = useState('');
   const [name, setName] = useState('');
@@ -101,6 +102,15 @@ export function PlanEditorScreen() {
       if (preview.title) setName(preview.title);
       if (preview.description) setDescription(preview.description);
       if (preview.imageUrl) setCoverImageUrl(preview.imageUrl);
+      if (preview.emoji) setEmoji(preview.emoji);
+      if (preview.locationName) setLocationName(preview.locationName);
+      if (preview.locationAddress) setLocationAddress(preview.locationAddress);
+      if (preview.startDate) setDate(preview.startDate);
+      if (preview.startTime) setTime(preview.startTime);
+      if (preview.endDate) setEndDate(preview.endDate);
+      if (preview.endTime) setEndTime(preview.endTime);
+      if (preview.allDay !== null) setAllDay(preview.allDay);
+      setImportResult(preview);
     } catch (cause) {
       setError(readableError(cause, 'Could not import that link. You can still add its details manually.'));
     } finally {
@@ -168,9 +178,33 @@ export function PlanEditorScreen() {
 
       <ScrollView contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
         <Section eyebrow="IMPORT" title="start with a link">
-          <Text style={styles.help}>Paste a camp, market, class, or event page. Village will pull in its public title, description, and image when available.</Text>
-          <TextInput value={sourceUrl} onChangeText={setSourceUrl} autoCapitalize="none" autoCorrect={false} keyboardType="url" placeholder="https://…" placeholderTextColor={colors.taupe} style={styles.field} />
-          <SecondaryButton label={importing ? 'importing…' : 'import details'} loading={importing} onPress={importLink} />
+          <Text style={styles.help}>Paste a camp, market, class, or event page. Village will read the listing and prefill whatever it can find. You review everything before publishing.</Text>
+          <TextInput
+            value={sourceUrl}
+            onChangeText={(value) => { setSourceUrl(value); setImportResult(null); }}
+            onSubmitEditing={importLink}
+            returnKeyType="go"
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="url"
+            placeholder="https://…"
+            placeholderTextColor={colors.taupe}
+            style={styles.field}
+          />
+          <SecondaryButton label={importing ? 'reading the page…' : 'prefill plan details'} loading={importing} onPress={importLink} />
+          {importResult ? (
+            <View style={styles.importSuccess}>
+              <Icon name="check.circle" size={20} color={colors.sage} />
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={styles.importSuccessTitle}>
+                  Filled {importResult.importedFields.length} detail{importResult.importedFields.length === 1 ? '' : 's'}
+                </Text>
+                <Text style={styles.help}>
+                  {importResult.inference === 'ai' ? 'AI-assisted import' : 'Read from the listing'} · review below before publishing
+                </Text>
+              </View>
+            </View>
+          ) : null}
         </Section>
 
         <Section eyebrow="THE PLAN" title="what’s happening?">
@@ -295,6 +329,8 @@ const styles = {
   multiline: { minHeight: 100, paddingTop: 12, textAlignVertical: 'top' } as const,
   secondaryButton: { minHeight: 44, borderRadius: radii.md, borderWidth: 1, borderColor: colors.rule, backgroundColor: colors.cream, alignItems: 'center', justifyContent: 'center' } as const,
   secondaryText: { fontFamily: fonts.sansExtra, fontSize: 12, color: colors.terracotta } as const,
+  importSuccess: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: radii.md, borderWidth: 1, borderColor: colors.sage, backgroundColor: colors.sageSoft } as const,
+  importSuccessTitle: { fontFamily: fonts.sansExtra, fontSize: 12.5, color: colors.dark } as const,
   toggleRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingTop: 4 } as const,
   rowLabel: { fontFamily: fonts.sansExtra, fontSize: 13.5, color: colors.dark } as const,
   audienceCard: { flexDirection: 'row', alignItems: 'center', gap: 11, padding: 12, borderWidth: 1, borderColor: colors.rule, borderRadius: radii.md, backgroundColor: colors.cream } as const,

@@ -46,6 +46,7 @@ export type ActivityInteraction = {
   parent_id: UUID;
   activity_id: UUID;
   state: InteractionState;
+  rsvp_note?: string | null;
   state_changed_at: Timestamp;
   created_at: Timestamp;
 };
@@ -60,6 +61,7 @@ export type PlanParticipant = {
   avatar_url: string | null;
   profile_visible: boolean;
   state: Extract<InteractionState, 'interested' | 'going' | 'attended' | 'out'>;
+  rsvp_note: string | null;
   state_changed_at: Timestamp;
 };
 
@@ -83,4 +85,14 @@ export type PlanLinkPreview = {
   title: string | null;
   description: string | null;
   imageUrl: string | null;
+  emoji: string | null;
+  locationName: string | null;
+  locationAddress: string | null;
+  startDate: string | null;
+  startTime: string | null;
+  endDate: string | null;
+  endTime: string | null;
+  allDay: boolean | null;
+  importedFields: string[];
+  inference: 'ai' | 'structured' | 'metadata';
 };

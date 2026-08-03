@@ -349,12 +349,14 @@ function buildSocialProof(
   const goingConnections: PlanParticipant[] = [];
   const outConnections: PlanParticipant[] = [];
   let myState: InteractionState | null = null;
+  let myRsvpNote: string | null = null;
 
   for (const i of rows) {
     const parentId = i.parent_id;
     const state = i.state;
     if (parentId === me) {
       myState = state;
+      myRsvpNote = i.rsvp_note ?? null;
       continue;
     }
     if (state === 'interested') interestedConnections.push(i);
@@ -362,7 +364,7 @@ function buildSocialProof(
     else if (state === 'out') outConnections.push(i);
   }
 
-  return { activity, venue, interestedConnections, goingConnections, outConnections, myState };
+  return { activity, venue, interestedConnections, goingConnections, outConnections, myState, myRsvpNote };
 }
 
 async function getPlan(planId: UUID): Promise<ActivitySocialProof | null> {
@@ -437,11 +439,17 @@ async function cancelPlan(planId: UUID): Promise<void> {
   if (error) throw error;
 }
 
-async function setPlanRsvp(planId: UUID, state: 'interested' | 'going' | 'out'): Promise<ActivityInteraction> {
-  const { data: result, error } = await supabase.rpc('set_plan_rsvp', {
+async function setPlanRsvp(
+  planId: UUID,
+  state: 'interested' | 'going' | 'out',
+  note?: string,
+): Promise<ActivityInteraction> {
+  const args: { p_plan: UUID; p_state: string; p_note?: string } = {
     p_plan: planId,
     p_state: state,
-  });
+  };
+  if (note !== undefined) args.p_note = note;
+  const { data: result, error } = await supabase.rpc('set_plan_rsvp', args);
   if (error) throw error;
   return result as ActivityInteraction;
 }

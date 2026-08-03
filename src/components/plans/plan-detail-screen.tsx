@@ -6,6 +6,7 @@ import {
   Pressable,
   ScrollView,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { Image } from 'expo-image';
@@ -26,6 +27,7 @@ export function PlanDetailScreen({ id }: PlanDetailScreenProps) {
   const [myId, setMyId] = useState<UUID | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [rsvpNote, setRsvpNote] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -34,6 +36,7 @@ export function PlanDetailScreen({ id }: PlanDetailScreenProps) {
       const [nextProof, me] = await Promise.all([data.getPlan(id), data.getCurrentUser()]);
       setProof(nextProof);
       setMyId(me.id);
+      setRsvpNote(nextProof?.myRsvpNote ?? '');
       if (!nextProof) setError('This plan is unavailable or was shared with a different audience.');
     } catch (cause) {
       setError(readableError(cause, 'Could not load this plan.'));
@@ -44,12 +47,12 @@ export function PlanDetailScreen({ id }: PlanDetailScreenProps) {
 
   useEffect(() => { load(); }, [load]);
 
-  const setRsvp = async (next: RsvpState | null) => {
+  const setRsvp = async (next: RsvpState | null, note = rsvpNote) => {
     if (!proof || saving || proof.activity.cancelled_at) return;
     setSaving(true);
     setError(null);
     try {
-      if (next) await data.setPlanRsvp(id, next);
+      if (next) await data.setPlanRsvp(id, next, note);
       else await data.clearPlanRsvp(id);
       await load();
     } catch (cause) {
@@ -103,6 +106,7 @@ export function PlanDetailScreen({ id }: PlanDetailScreenProps) {
   const imageUrl = activity.cover_image_url ?? venue?.image_url ?? null;
   const isOwner = activity.created_by === myId;
   const state = myState === 'going' || myState === 'interested' || myState === 'out' ? myState : null;
+  const noteChanged = rsvpNote.trim() !== (proof.myRsvpNote ?? '');
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.cream }} edges={['top', 'bottom']}>
@@ -156,7 +160,27 @@ export function PlanDetailScreen({ id }: PlanDetailScreenProps) {
                 <RsvpButton label="Interested" emoji="♡" selected={state === 'interested'} disabled={saving} onPress={() => setRsvp('interested')} />
                 <RsvpButton label="Out" emoji="×" selected={state === 'out'} disabled={saving} onPress={() => setRsvp('out')} />
               </View>
-              {state ? <Pressable disabled={saving} onPress={() => setRsvp(null)}><Text style={styles.clearText}>clear my response</Text></Pressable> : null}
+              {state ? (
+                <View style={styles.rsvpDetails}>
+                  <Text style={styles.rowLabel}>Your details · optional</Text>
+                  <Text style={styles.helpLeft}>Add whichever specifics matter to your family—kids, weeks, timing, pickup, or anything else.</Text>
+                  <TextInput
+                    value={rsvpNote}
+                    onChangeText={setRsvpNote}
+                    maxLength={500}
+                    multiline
+                    placeholder="Leo · weeks 2, 4, and 6"
+                    placeholderTextColor={colors.taupe}
+                    style={styles.rsvpNote}
+                  />
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Pressable disabled={saving} onPress={() => setRsvp(null)}><Text style={styles.clearText}>clear my response</Text></Pressable>
+                    <Pressable disabled={saving || !noteChanged} onPress={() => setRsvp(state)} style={[styles.saveNoteButton, !noteChanged && { opacity: 0.42 }]}>
+                      <Text style={styles.saveNoteText}>{saving ? 'saving…' : 'save details'}</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ) : null}
             </>
           ) : null}
         </View>
@@ -191,6 +215,7 @@ function ParticipantSection({ title, people, empty, subdued = false }: { title: 
           <View style={{ flex: 1 }}>
             <Text style={styles.personName}>{person.display_name}</Text>
             <Text style={styles.help}>{person.neighborhood ?? (person.profile_visible ? 'Village connection' : 'Village parent')}</Text>
+            {person.rsvp_note ? <Text selectable style={styles.participantNote}>{person.rsvp_note}</Text> : null}
           </View>
           {person.profile_visible ? <Icon name="chevron.right" size={16} color={colors.taupe} /> : null}
         </Pressable>
@@ -283,10 +308,17 @@ const styles = {
   rsvpSelected: { backgroundColor: colors.terracotta, borderColor: colors.terracotta } as const,
   rsvpEmoji: { fontFamily: fonts.sansExtra, fontSize: 18, color: colors.terracotta } as const,
   rsvpLabel: { fontFamily: fonts.sansBold, fontSize: 11, color: colors.dark } as const,
+  rsvpDetails: { gap: 8, paddingTop: 4 } as const,
+  rsvpNote: { minHeight: 78, paddingHorizontal: 12, paddingTop: 11, borderRadius: radii.md, borderWidth: 1, borderColor: colors.rule, backgroundColor: colors.cream, fontFamily: fonts.sansSemi, fontSize: 13, lineHeight: 18, color: colors.dark, textAlignVertical: 'top' } as const,
+  saveNoteButton: { minHeight: 36, paddingHorizontal: 13, borderRadius: radii.pill, backgroundColor: colors.terracotta, alignItems: 'center', justifyContent: 'center' } as const,
+  saveNoteText: { fontFamily: fonts.sansExtra, fontSize: 11, color: colors.white } as const,
   clearText: { alignSelf: 'center', fontFamily: fonts.sansBold, fontSize: 11, color: colors.taupe, padding: 5 } as const,
   personRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 10 } as const,
   personName: { fontFamily: fonts.sansExtra, fontSize: 13, color: colors.dark } as const,
   help: { textAlign: 'center', fontFamily: fonts.sans, fontSize: 12, lineHeight: 18, color: colors.taupe } as const,
+  helpLeft: { fontFamily: fonts.sans, fontSize: 12, lineHeight: 18, color: colors.taupe } as const,
+  rowLabel: { fontFamily: fonts.sansExtra, fontSize: 12.5, color: colors.dark } as const,
+  participantNote: { paddingTop: 5, fontFamily: fonts.serif, fontSize: 13, lineHeight: 18, color: colors.brownMid } as const,
   error: { marginHorizontal: 16, fontFamily: fonts.sansSemi, fontSize: 12, lineHeight: 18, color: colors.terracotta } as const,
   cancelButton: { alignSelf: 'center', paddingHorizontal: 18, paddingVertical: 11 } as const,
   cancelText: { fontFamily: fonts.sansBold, fontSize: 12, color: colors.terracotta } as const,

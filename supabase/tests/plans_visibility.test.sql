@@ -53,12 +53,20 @@ begin
     'an accepted connection should see a village plan';
   assert public.can_view_plan(invited_plan),
     'an invited connection should see an invited-only plan';
-  rsvp := public.set_plan_rsvp(invited_plan, 'out');
+  rsvp := public.set_plan_rsvp(invited_plan, 'out', 'Leo · weeks 2, 4, and 6');
   assert rsvp.state = 'out', 'invited parents should be able to say they are out';
+  assert rsvp.rsvp_note = 'Leo · weeks 2, 4, and 6',
+    'family-specific attendance details should stay on the RSVP';
   assert exists (
     select 1 from public.plan_participants(array[invited_plan])
-    where parent_id = '82000000-0000-4000-8000-000000000002' and state = 'out'
-  ), 'out responses should appear in plan participants';
+    where parent_id = '82000000-0000-4000-8000-000000000002'
+      and state = 'out'
+      and rsvp_note = 'Leo · weeks 2, 4, and 6'
+  ), 'out responses and their details should appear in plan participants';
+
+  rsvp := public.set_plan_rsvp(invited_plan, 'going');
+  assert rsvp.rsvp_note = 'Leo · weeks 2, 4, and 6',
+    'changing RSVP state without details should preserve the current details';
 
   perform set_config('request.jwt.claim.sub', '82000000-0000-4000-8000-000000000013', true);
   begin

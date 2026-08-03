@@ -40,6 +40,8 @@ export type ActivitySocialProof = {
   outConnections: PlanParticipant[];
   /** Current user's own state for this activity, if any. */
   myState: InteractionState | null;
+  /** Optional family-specific attendance details, separate from the plan. */
+  myRsvpNote: string | null;
 };
 
 export type NearbyParent = {
