@@ -322,9 +322,10 @@ function normalizedAiFields(value: unknown): Partial<PlanFields> | null {
 
 async function aiEnrichment(url: URL, text: string, fallback: PlanFields): Promise<Partial<PlanFields> | null> {
   const apiKey = Deno.env.get('PLAN_IMPORT_API_KEY');
-  if (!apiKey) return null;
-  const baseUrl = (Deno.env.get('PLAN_IMPORT_BASE_URL') ?? 'https://api.groq.com/openai/v1').replace(/\/?$/, '/');
-  const model = Deno.env.get('PLAN_IMPORT_MODEL') ?? 'llama-3.1-8b-instant';
+  const configuredBaseUrl = Deno.env.get('PLAN_IMPORT_BASE_URL');
+  const model = Deno.env.get('PLAN_IMPORT_MODEL');
+  if (!apiKey || !configuredBaseUrl || !model) return null;
+  const baseUrl = configuredBaseUrl.replace(/\/?$/, '/');
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 14_000);
   try {
