@@ -37,6 +37,10 @@ export function InviteAcceptanceScreen({ reference, signedIn }: { reference: str
     }
   };
 
+  const openInviterProfile = () => {
+    if (preview?.inviter) router.replace(`/profile/${preview.inviter.id}`);
+  };
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.cream }} edges={['top', 'bottom']}>
       <View style={{ padding: 16 }}>
@@ -55,17 +59,33 @@ export function InviteAcceptanceScreen({ reference, signedIn }: { reference: str
                 size={94}
               />
             </View>
-            <Text style={styles.eyebrow}>A PRIVATE INVITATION</Text>
+            <Text style={styles.eyebrow}>{preview.is_self ? 'YOUR PRIVATE INVITATION' : 'A PRIVATE INVITATION'}</Text>
             <Text style={{ fontFamily: fonts.serifRegular, fontSize: 38, lineHeight: 41, color: colors.dark, textAlign: 'center' }}>
-              {preview.inviter.display_name.split(' ')[0]} invited you into their village
+              {preview.is_self
+                ? 'this is your Village link'
+                : preview.already_connected
+                  ? `you’re already connected with ${preview.inviter.display_name.split(' ')[0]}`
+                  : `${preview.inviter.display_name.split(' ')[0]} invited you into their village`}
             </Text>
             <Text style={{ fontFamily: fonts.sans, fontSize: 14, lineHeight: 21, color: colors.brownMid, textAlign: 'center' }}>
-              {preview.inviter.neighborhood ? `${preview.inviter.neighborhood} · ` : ''}Connections are mutual, private, and always under your control.
+              {preview.is_self
+                ? 'Share this link with parents you already know. You can revoke it whenever you want.'
+                : `${preview.inviter.neighborhood ? `${preview.inviter.neighborhood} · ` : ''}Connections are mutual, private, and always under your control.`}
             </Text>
-            {!preview.active ? (
+            {preview.is_self ? (
+              <TerracottaButton label="share this invite →" onPress={() => router.replace('/add-to-village')} fullWidth style={{ marginTop: 8 }} />
+            ) : preview.already_connected ? (
+              <TerracottaButton label="view their profile →" onPress={openInviterProfile} fullWidth style={{ marginTop: 8 }} />
+            ) : !preview.active ? (
               <Text selectable style={styles.error}>This invite has expired or reached its limit.</Text>
             ) : signedIn ? (
-              <TerracottaButton label={accepting ? 'joining…' : 'join their village →'} onPress={accept} disabled={accepting} fullWidth style={{ marginTop: 8 }} />
+              <TerracottaButton
+                label={accepting ? 'connecting…' : `connect with ${preview.inviter.display_name.split(' ')[0]} →`}
+                onPress={accept}
+                disabled={accepting}
+                fullWidth
+                style={{ marginTop: 8 }}
+              />
             ) : (
               <TerracottaButton
                 label="sign in to accept →"

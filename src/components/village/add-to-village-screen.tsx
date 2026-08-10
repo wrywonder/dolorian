@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -8,7 +8,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import * as Linking from 'expo-linking';
+import * as Clipboard from 'expo-clipboard';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import QRCode from 'react-native-qrcode-svg';
@@ -16,64 +16,64 @@ import { Icon, TerracottaButton } from '@/components/ui';
 import { colors, fonts, radii } from '@/lib/constants';
 import { data } from '@/lib/data';
 import { readableError } from '@/lib/error-message';
+import { connectionInviteMessage, connectionInviteUrl } from '@/lib/invite-links';
 import type { ConnectionInvite } from '@/types';
+
+type BusyAction = 'load' | 'share' | 'copy' | 'join';
 
 export function AddToVillageScreen() {
   const [invite, setInvite] = useState<ConnectionInvite | null>(null);
-  const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
-  const [busy, setBusy] = useState<'create' | 'share' | 'email' | 'join' | null>(null);
+  const [busy, setBusy] = useState<BusyAction | null>('load');
   const [error, setError] = useState<string | null>(null);
+  const [showQr, setShowQr] = useState(false);
+  const [showCodeEntry, setShowCodeEntry] = useState(false);
+  const [copied, setCopied] = useState(false);
 
-  const link = useMemo(() => invite ? Linking.createURL(`/invite/${invite.token}`) : null, [invite]);
+  const link = useMemo(
+    () => invite ? connectionInviteUrl(invite.token) : null,
+    [invite],
+  );
 
-  const ensureInvite = async (): Promise<{ invite: ConnectionInvite; link: string }> => {
-    if (invite && link) return { invite, link };
-    const created = await data.createConnectionInvite();
-    const createdLink = Linking.createURL(`/invite/${created.token}`);
-    setInvite(created);
-    return { invite: created, link: createdLink };
-  };
-
-  const create = async () => {
-    setBusy('create');
+  const loadInvite = async () => {
+    setBusy('load');
     setError(null);
     try {
-      await ensureInvite();
+      setInvite(await data.getOrCreateConnectionInvite());
     } catch (cause) {
-      setError(readableError(cause, 'Could not create an invite.'));
+      setError(readableError(cause, 'Could not prepare your invite.'));
     } finally {
       setBusy(null);
     }
   };
 
+  useEffect(() => { void loadInvite(); }, []);
+
   const share = async () => {
+    if (!link) return;
     setBusy('share');
     setError(null);
     try {
-      const created = await ensureInvite();
       await Share.share({
-        title: 'Join my Village',
-        message: `Join my private parent village. Use code ${created.invite.code} or open ${created.link}`,
+        title: 'Connect with me in Village',
+        message: connectionInviteMessage(link),
       });
     } catch (cause) {
-      setError(readableError(cause, 'Could not share this invite.'));
+      setError(readableError(cause, 'Could not open sharing.'));
     } finally {
       setBusy(null);
     }
   };
 
-  const sendEmail = async () => {
-    if (!email.trim()) { setError('Add an email address first.'); return; }
-    setBusy('email');
+  const copy = async () => {
+    if (!link) return;
+    setBusy('copy');
     setError(null);
     try {
-      const created = await ensureInvite();
-      const subject = encodeURIComponent('Join my Village');
-      const body = encodeURIComponent(`I’d love to add you to my private parent village.\n\nInvite code: ${created.invite.code}\n${created.link}\n\nThis invite expires in seven days.`);
-      await Linking.openURL(`mailto:${encodeURIComponent(email.trim())}?subject=${subject}&body=${body}`);
+      await Clipboard.setStringAsync(link);
+      setCopied(true);
     } catch (cause) {
-      setError(readableError(cause, 'Could not open your email app.'));
+      setError(readableError(cause, 'Could not copy your link.'));
     } finally {
       setBusy(null);
     }
@@ -84,9 +84,13 @@ export function AddToVillageScreen() {
     setBusy('join');
     setError(null);
     try {
-      const preview = await data.previewConnectionInvite(code);
-      if (!preview.found || !preview.active || !preview.inviter) throw new Error('That invite is invalid or expired.');
-      await data.redeemConnectionInvite(code);
+      const reference = code.trim();
+      const preview = await data.previewConnectionInvite(reference);
+      if (!preview.found || !preview.active || !preview.inviter) {
+        throw new Error('That invite is invalid or expired.');
+      }
+      if (preview.is_self) throw new Error('That is your own invite code.');
+      if (!preview.already_connected) await data.redeemConnectionInvite(reference);
       router.replace(`/profile/${preview.inviter.id}`);
     } catch (cause) {
       setError(readableError(cause, 'Could not accept this invite.'));
@@ -95,66 +99,109 @@ export function AddToVillageScreen() {
     }
   };
 
+  const unavailable = busy !== null || !link;
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.cream }} edges={['top', 'bottom']}>
-      <View style={{ height: 54, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center' }}>
+      <View style={styles.header}>
         <Pressable accessibilityRole="button" accessibilityLabel="Back" onPress={() => router.back()} hitSlop={10} style={styles.iconButton}>
           <View style={{ transform: [{ rotate: '180deg' }] }}><Icon name="chevron.right" size={19} color={colors.dark} /></View>
         </Pressable>
-        <Text style={{ flex: 1, textAlign: 'center', fontFamily: fonts.sansExtra, fontSize: 14, color: colors.dark }}>add to your village</Text>
+        <Text style={styles.headerTitle}>add friends</Text>
         <View style={{ width: 40 }} />
       </View>
-      <ScrollView contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 20, paddingBottom: 48, gap: 22 }}>
+
+      <ScrollView contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
         <View>
-          <Text style={styles.eyebrow}>PRIVATE BY DESIGN</Text>
-          <Text style={{ fontFamily: fonts.serifRegular, fontSize: 36, lineHeight: 39, color: colors.dark, paddingTop: 4 }}>invite someone you already know</Text>
-          <Text style={{ fontFamily: fonts.sans, fontSize: 13, lineHeight: 20, color: colors.brownMid, paddingTop: 10 }}>
-            Village doesn’t publish a parent directory. Every connection begins with a private invitation and both people choosing yes.
+          <Text style={styles.eyebrow}>YOUR PRIVATE INVITE</Text>
+          <Text style={styles.title}>bring your people into Village</Text>
+          <Text style={styles.intro}>
+            Send one trusted link in WhatsApp, Messages, or wherever you already talk. They’ll see your profile before choosing to connect.
           </Text>
         </View>
 
-        {invite && link ? (
-          <View style={styles.qrCard}>
-            <View style={{ padding: 16, borderRadius: 20, backgroundColor: colors.white }}>
-              <QRCode value={link} size={188} color={colors.dark} backgroundColor={colors.white} />
-            </View>
-            <Text style={styles.eyebrow}>INVITE CODE</Text>
-            <Text selectable style={{ fontFamily: fonts.monoBold, fontSize: 25, letterSpacing: 2.5, color: colors.dark }}>{invite.code}</Text>
-            <Text style={styles.help}>Expires {formatDate(invite.expires_at)} · up to {invite.max_uses} people</Text>
-            <TerracottaButton label={busy === 'share' ? 'opening share sheet…' : 'share private invite →'} onPress={share} fullWidth disabled={busy !== null} />
+        <View style={styles.shareCard}>
+          <View style={styles.shareIcon}>
+            {busy === 'load' ? <ActivityIndicator color={colors.terracotta} /> : <Icon name="person.2" size={26} color={colors.terracotta} />}
           </View>
-        ) : (
-          <Pressable onPress={create} disabled={busy !== null} style={styles.createCard}>
-            <View style={{ width: 54, height: 54, borderRadius: 27, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' }}>
-              {busy === 'create' ? <ActivityIndicator color={colors.terracotta} /> : <Icon name="qrcode" size={27} color={colors.terracotta} />}
+          <Text style={styles.sectionTitle}>share your Village link</Text>
+          <Text style={styles.help}>
+            {invite
+              ? `This link works for up to ${invite.max_uses} parent${invite.max_uses === 1 ? '' : 's'} and can be revoked anytime.`
+              : 'Preparing one private link you can share and revoke anytime.'}
+          </Text>
+          <TerracottaButton
+            label={busy === 'share' ? 'opening sharing…' : 'share my link →'}
+            onPress={share}
+            fullWidth
+            disabled={unavailable}
+          />
+
+          <View style={styles.actionRow}>
+            <Pressable disabled={unavailable} onPress={copy} style={[styles.secondaryButton, unavailable && styles.disabled]}>
+              {busy === 'copy' ? <ActivityIndicator size="small" color={colors.terracotta} /> : <Icon name="link" size={17} color={colors.terracotta} />}
+              <Text style={styles.secondaryButtonText}>{copied ? 'copied!' : 'copy link'}</Text>
+            </Pressable>
+            <Pressable disabled={unavailable} onPress={() => setShowQr((value) => !value)} style={[styles.secondaryButton, unavailable && styles.disabled]}>
+              <Icon name="qrcode" size={18} color={colors.terracotta} />
+              <Text style={styles.secondaryButtonText}>{showQr ? 'hide QR' : 'show QR'}</Text>
+            </Pressable>
+          </View>
+
+          {showQr && link ? (
+            <View style={styles.qrArea}>
+              <View style={styles.qrCode}>
+                <QRCode value={link} size={184} color={colors.dark} backgroundColor={colors.white} />
+              </View>
+              <Text style={styles.help}>Have your friend scan this with their phone camera.</Text>
             </View>
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontFamily: fonts.sansExtra, fontSize: 15, color: colors.dark }}>Create a private invite</Text>
-              <Text style={styles.help}>Get a QR code, link, and short code that expire in seven days.</Text>
+          ) : null}
+
+          {invite ? (
+            <View style={styles.linkDetails}>
+              <Text style={styles.eyebrow}>BACKUP CODE</Text>
+              <Text selectable style={styles.inviteCode}>{invite.code}</Text>
+              <Text style={styles.help}>Link expires {formatDate(invite.expires_at)}</Text>
             </View>
+          ) : null}
+        </View>
+
+        {error ? (
+          <View style={styles.errorCard}>
+            <Text selectable style={styles.error}>{error}</Text>
+            {!invite ? <Pressable onPress={loadInvite}><Text style={styles.retry}>try again</Text></Pressable> : null}
+          </View>
+        ) : null}
+
+        <Pressable onPress={() => setShowCodeEntry((value) => !value)} style={styles.codeDisclosure}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.eyebrow}>HAVE THEIR CODE?</Text>
+            <Text style={styles.codeDisclosureTitle}>enter an invite code</Text>
+          </View>
+          <View style={{ transform: [{ rotate: showCodeEntry ? '90deg' : '0deg' }] }}>
             <Icon name="chevron.right" size={18} color={colors.taupe} />
-          </Pressable>
-        )}
+          </View>
+        </Pressable>
 
-        <View style={styles.sectionCard}>
-          <Text style={styles.eyebrow}>SEND TO ONE PERSON</Text>
-          <Text style={styles.sectionTitle}>invite by email</Text>
-          <TextInput value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} placeholder="parent@example.com" placeholderTextColor={colors.taupe} style={styles.field} />
-          <Pressable disabled={busy !== null} onPress={sendEmail} style={styles.secondaryButton}>
-            {busy === 'email' ? <ActivityIndicator color={colors.terracotta} /> : <><Icon name="paper.plane" size={17} color={colors.terracotta} /><Text style={styles.secondaryButtonText}>open email invite</Text></>}
-          </Pressable>
-        </View>
+        {showCodeEntry ? (
+          <View style={styles.codeCard}>
+            <TextInput
+              value={code}
+              onChangeText={(value) => setCode(value.toUpperCase())}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              maxLength={36}
+              placeholder="8-character invite code"
+              placeholderTextColor={colors.taupe}
+              style={styles.field}
+            />
+            <Pressable disabled={busy !== null || !code.trim()} onPress={join} style={[styles.joinButton, (!code.trim() || busy !== null) && styles.disabled]}>
+              {busy === 'join' ? <ActivityIndicator color={colors.terracotta} /> : <><Icon name="wave" size={18} color={colors.terracotta} /><Text style={styles.secondaryButtonText}>connect</Text></>}
+            </Pressable>
+          </View>
+        ) : null}
 
-        <View style={styles.sectionCard}>
-          <Text style={styles.eyebrow}>HAVE A CODE?</Text>
-          <Text style={styles.sectionTitle}>join their village</Text>
-          <TextInput value={code} onChangeText={(value) => setCode(value.toUpperCase())} autoCapitalize="characters" autoCorrect={false} maxLength={36} placeholder="8-character invite code" placeholderTextColor={colors.taupe} style={[styles.field, { fontFamily: fonts.monoBold, letterSpacing: 1.2 }]} />
-          <Pressable disabled={busy !== null || !code.trim()} onPress={join} style={[styles.secondaryButton, !code.trim() && { opacity: 0.45 }]}>
-            {busy === 'join' ? <ActivityIndicator color={colors.terracotta} /> : <><Icon name="wave" size={18} color={colors.terracotta} /><Text style={styles.secondaryButtonText}>accept invitation</Text></>}
-          </Pressable>
-        </View>
-
-        {error ? <Text selectable style={{ fontFamily: fonts.sansSemi, fontSize: 12, lineHeight: 18, color: colors.terracotta }}>{error}</Text> : null}
+        <Text style={styles.privacy}>Connections are mutual, private, and always under your control.</Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -165,14 +212,32 @@ function formatDate(value: string): string {
 }
 
 const styles = {
+  header: { height: 54, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center' } as const,
+  headerTitle: { flex: 1, textAlign: 'center', fontFamily: fonts.sansExtra, fontSize: 14, color: colors.dark } as const,
   iconButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.rule, alignItems: 'center', justifyContent: 'center' } as const,
+  content: { padding: 20, paddingBottom: 48, gap: 18 } as const,
   eyebrow: { fontFamily: fonts.monoBold, fontSize: 9.5, letterSpacing: 0.7, color: colors.taupe } as const,
-  help: { fontFamily: fonts.sans, fontSize: 11.5, lineHeight: 17, color: colors.taupe, paddingTop: 3 } as const,
-  qrCard: { alignItems: 'center', gap: 12, padding: 20, borderRadius: radii.lg, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.rule } as const,
-  createCard: { minHeight: 96, flexDirection: 'row', alignItems: 'center', gap: 13, padding: 16, borderRadius: radii.lg, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.rule } as const,
-  sectionCard: { gap: 12, padding: 16, borderRadius: radii.lg, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.rule } as const,
-  sectionTitle: { fontFamily: fonts.serifRegular, fontSize: 25, color: colors.dark } as const,
-  field: { height: 46, paddingHorizontal: 12, borderRadius: radii.md, backgroundColor: colors.cream, borderWidth: 1, borderColor: colors.rule, fontFamily: fonts.sansSemi, fontSize: 14, color: colors.dark } as const,
-  secondaryButton: { minHeight: 43, flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center', borderRadius: radii.md, borderWidth: 1, borderColor: colors.rule, backgroundColor: colors.cream } as const,
+  title: { fontFamily: fonts.serifRegular, fontSize: 36, lineHeight: 39, color: colors.dark, paddingTop: 4 } as const,
+  intro: { fontFamily: fonts.sans, fontSize: 13, lineHeight: 20, color: colors.brownMid, paddingTop: 10 } as const,
+  shareCard: { alignItems: 'center', gap: 12, padding: 20, borderRadius: radii.lg, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.rule } as const,
+  shareIcon: { width: 58, height: 58, borderRadius: 29, backgroundColor: colors.cream, alignItems: 'center', justifyContent: 'center' } as const,
+  sectionTitle: { fontFamily: fonts.serifRegular, fontSize: 27, color: colors.dark, textAlign: 'center' } as const,
+  help: { fontFamily: fonts.sans, fontSize: 11.5, lineHeight: 17, color: colors.taupe, textAlign: 'center' } as const,
+  actionRow: { width: '100%', flexDirection: 'row', gap: 9 } as const,
+  secondaryButton: { minHeight: 44, flex: 1, flexDirection: 'row', gap: 7, alignItems: 'center', justifyContent: 'center', borderRadius: radii.md, borderWidth: 1, borderColor: colors.rule, backgroundColor: colors.cream } as const,
   secondaryButtonText: { fontFamily: fonts.sansExtra, fontSize: 12, color: colors.terracotta } as const,
+  disabled: { opacity: 0.45 } as const,
+  qrArea: { width: '100%', alignItems: 'center', gap: 10, paddingTop: 5 } as const,
+  qrCode: { padding: 15, borderRadius: radii.lg, backgroundColor: colors.white } as const,
+  linkDetails: { width: '100%', alignItems: 'center', gap: 5, paddingTop: 5, borderTopWidth: 1, borderTopColor: colors.rule } as const,
+  inviteCode: { fontFamily: fonts.monoBold, fontSize: 20, letterSpacing: 2.2, color: colors.dark } as const,
+  errorCard: { flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'space-between', padding: 13, borderRadius: radii.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.rule } as const,
+  error: { flex: 1, fontFamily: fonts.sansSemi, fontSize: 12, lineHeight: 18, color: colors.terracotta } as const,
+  retry: { fontFamily: fonts.sansExtra, fontSize: 12, color: colors.terracotta } as const,
+  codeDisclosure: { minHeight: 68, flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, borderRadius: radii.lg, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.rule } as const,
+  codeDisclosureTitle: { fontFamily: fonts.sansExtra, fontSize: 14, color: colors.dark, paddingTop: 3 } as const,
+  codeCard: { gap: 10, padding: 14, marginTop: -8, borderRadius: radii.lg, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.rule } as const,
+  field: { height: 46, paddingHorizontal: 12, borderRadius: radii.md, backgroundColor: colors.cream, borderWidth: 1, borderColor: colors.rule, fontFamily: fonts.monoBold, fontSize: 14, letterSpacing: 1.2, color: colors.dark } as const,
+  joinButton: { minHeight: 43, flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center', borderRadius: radii.md, borderWidth: 1, borderColor: colors.rule, backgroundColor: colors.cream } as const,
+  privacy: { fontFamily: fonts.serif, fontSize: 14, lineHeight: 20, color: colors.taupe, textAlign: 'center', paddingHorizontal: 20 } as const,
 };

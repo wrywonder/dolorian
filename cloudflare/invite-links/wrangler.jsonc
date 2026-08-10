@@ -1,0 +1,20 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "village-invite-links",
+  "account_id": "4ed4647ec01c81595504a76dcba88d79",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-08-09",
+  "routes": [
+    {
+      "pattern": "withvillage.app/join/*",
+      "zone_id": "b3815d8a2b0c55bcc3704b78671c9096"
+    },
+    {
+      "pattern": "withvillage.app/.well-known/apple-app-site-association",
+      "zone_id": "b3815d8a2b0c55bcc3704b78671c9096"
+    }
+  ],
+  "observability": {
+    "enabled": true
+  }
+}

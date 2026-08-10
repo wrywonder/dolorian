@@ -65,6 +65,8 @@ export type BlockedParent = ParentPreview & {
 export type ConnectionInvitePreview = {
   found: boolean;
   active?: boolean;
+  already_connected?: boolean;
+  is_self?: boolean;
   token?: UUID;
   code?: string;
   expires_at?: Timestamp;

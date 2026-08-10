@@ -94,6 +94,22 @@ unconfigured Supabase client.
   `validateLoginCode` and the sign-in screen in sync if that server setting
   changes.
 
+## Connection invite links
+
+- The app shares stable HTTPS invites at `https://withvillage.app/join/<token>`;
+  never switch these back to the `dolorian://` custom scheme in share copy.
+- Cloudflare Worker `village-invite-links` owns only `/join/*` and
+  `/.well-known/apple-app-site-association`. Its source and Wrangler config live
+  in `cloudflare/invite-links/`.
+- iOS Universal Links use Apple application identifier
+  `756X7G9F7X.com.dolorian.app` and `applinks:withvillage.app` in `app.json`.
+  Changing the team, bundle ID, or associated domain requires a new iOS build.
+- The zone apex has a proxied `A` record to reserved placeholder `192.0.2.1` so
+  the scoped Worker routes resolve. Replace it when the root marketing site is
+  launched; MX/TXT email-routing records are independent.
+- Older builds fall back from the web handoff to `dolorian://invite/<token>`.
+  Keep the legacy `/invite/[token]` app route while old TestFlight builds exist.
+
 ## Conventions
 
 - **TypeScript is strict** (`noUncheckedIndexedAccess`, `noImplicitOverride`,

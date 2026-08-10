@@ -1049,6 +1049,12 @@ async function createConnectionInvite(maxUses = 10): Promise<ConnectionInvite> {
   return data as ConnectionInvite;
 }
 
+async function getOrCreateConnectionInvite(): Promise<ConnectionInvite> {
+  const { data, error } = await supabase.rpc('get_or_create_connection_invite');
+  if (error) throw error;
+  return data as ConnectionInvite;
+}
+
 async function revokeConnectionInvite(inviteId: UUID): Promise<void> {
   const { error } = await supabase.rpc('revoke_connection_invite', { invite_id: inviteId });
   if (error) throw error;
@@ -1276,6 +1282,7 @@ export const data = {
   getSuggestedConnections,
   getConnectionInvites,
   createConnectionInvite,
+  getOrCreateConnectionInvite,
   revokeConnectionInvite,
   previewConnectionInvite,
   redeemConnectionInvite,

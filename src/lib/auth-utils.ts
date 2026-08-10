@@ -46,7 +46,7 @@ export function initialsForName(value: string): string {
 
 export function accountDestination(hasProfile: boolean, invite?: string): string {
   if (!hasProfile) return invite ? `/(auth)/onboard?invite=${encodeURIComponent(invite)}` : '/(auth)/onboard';
-  return invite ? `/invite/${invite}` : '/(tabs)/buzz';
+  return invite ? `/join/${encodeURIComponent(invite)}` : '/(tabs)/buzz';
 }
 
 export function friendlyAuthError(cause: unknown, fallback = 'Something went wrong. Please try again.'): string {

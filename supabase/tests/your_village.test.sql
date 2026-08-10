@@ -11,6 +11,7 @@ do $$
 declare
   edge public.connections;
   invite public.connection_invites;
+  reused_invite public.connection_invites;
 begin
   perform set_config('request.jwt.claim.sub', '81000000-0000-4000-8000-000000000011', true);
   edge := public.request_connection('81000000-0000-4000-8000-000000000002');
@@ -55,7 +56,10 @@ begin
   ), 'blocker should be able to unblock';
 
   perform set_config('request.jwt.claim.sub', '81000000-0000-4000-8000-000000000011', true);
-  invite := public.create_connection_invite(1);
+  invite := public.get_or_create_connection_invite();
+  reused_invite := public.get_or_create_connection_invite();
+  assert reused_invite.id = invite.id, 'the share flow should reuse an active invite';
+  assert invite.expires_at > now() + interval '29 days', 'share links should last for thirty days';
   perform set_config('request.jwt.claim.sub', '81000000-0000-4000-8000-000000000013', true);
   edge := public.redeem_connection_invite(invite.code);
   assert edge.status = 'connected', 'redeeming an invite should create a mutual connection';

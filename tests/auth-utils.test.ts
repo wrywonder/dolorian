@@ -49,7 +49,7 @@ test('keeps incomplete accounts in onboarding and preserves invite destinations'
   assert.equal(accountDestination(false), '/(auth)/onboard');
   assert.equal(accountDestination(true), '/(tabs)/buzz');
   assert.equal(accountDestination(false, 'abc 123'), '/(auth)/onboard?invite=abc%20123');
-  assert.equal(accountDestination(true, 'abc-123'), '/invite/abc-123');
+  assert.equal(accountDestination(true, 'abc-123'), '/join/abc-123');
 });
 
 test('turns Supabase authentication failures into useful recovery copy', () => {
