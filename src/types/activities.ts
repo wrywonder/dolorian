@@ -26,6 +26,7 @@ export type Activity = {
   location_name: string | null;
   location_address: string | null;
   external_url: string | null;
+  external_source_key: string | null;
   cover_image_url: string | null;
   all_day: boolean;
   updated_at: Timestamp;
@@ -77,11 +78,13 @@ export type PlanInput = {
   location_name: string;
   location_address: string;
   external_url: string;
+  external_source_key: string;
   cover_image_url: string;
 };
 
 export type PlanLinkPreview = {
   url: string;
+  sourceKey: string;
   title: string | null;
   description: string | null;
   imageUrl: string | null;
@@ -94,5 +97,6 @@ export type PlanLinkPreview = {
   endTime: string | null;
   allDay: boolean | null;
   importedFields: string[];
-  inference: 'ai' | 'structured' | 'metadata';
+  inference: 'ai' | 'structured' | 'metadata' | 'provider';
+  warnings: string[];
 };

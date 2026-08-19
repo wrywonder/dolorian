@@ -333,6 +333,7 @@ function buildSocialProof(
     location_name: (row.location_name as string) ?? null,
     location_address: (row.location_address as string) ?? null,
     external_url: (row.external_url as string) ?? null,
+    external_source_key: (row.external_source_key as string) ?? null,
     cover_image_url: (row.cover_image_url as string) ?? null,
     all_day: (row.all_day as boolean) ?? false,
     updated_at: (row.updated_at as string) ?? (row.created_at as string),
@@ -409,12 +410,13 @@ function planRpcArgs(input: PlanInput) {
     p_location_name: input.location_name,
     p_location_address: input.location_address,
     p_external_url: input.external_url || null,
+    p_external_source_key: input.external_source_key || null,
     p_cover_image_url: input.cover_image_url || null,
   };
 }
 
 async function createPlan(input: PlanInput): Promise<Activity> {
-  const { data: result, error } = await supabase.rpc('create_plan', planRpcArgs(input));
+  const { data: result, error } = await supabase.rpc('create_plan_v2', planRpcArgs(input));
   if (error) throw error;
   const payload = result as PlanMutationResult;
   await Promise.all((payload.notified_parent_ids ?? []).map((parentId) =>
@@ -423,7 +425,7 @@ async function createPlan(input: PlanInput): Promise<Activity> {
 }
 
 async function updatePlan(planId: UUID, input: PlanInput): Promise<Activity> {
-  const { data: result, error } = await supabase.rpc('update_plan', {
+  const { data: result, error } = await supabase.rpc('update_plan_v2', {
     p_plan: planId,
     ...planRpcArgs(input),
   });
@@ -432,6 +434,47 @@ async function updatePlan(planId: UUID, input: PlanInput): Promise<Activity> {
   await Promise.all((payload.notified_parent_ids ?? []).map((parentId) =>
     deliverVillagePushBestEffort(parentId, 'plan_invite')));
   return payload.plan;
+}
+
+async function findExistingPlan(
+  sourceKey: string,
+  externalUrl: string,
+  excludePlanId?: UUID,
+): Promise<ActivitySocialProof | null> {
+  const me = await getCurrentParentId();
+  let sourceQuery = supabase
+    .from('activities')
+    .select('*, venue:venues(*)')
+    .eq('published', true)
+    .is('cancelled_at', null)
+    .eq('external_source_key', sourceKey)
+    .order('created_at', { ascending: true })
+    .limit(1);
+  if (excludePlanId) sourceQuery = sourceQuery.neq('id', excludePlanId);
+  const { data: sourceRows, error: sourceError } = await sourceQuery;
+  if (sourceError) throw sourceError;
+
+  let row = sourceRows?.[0] as Record<string, unknown> | undefined;
+  if (!row && externalUrl) {
+    let urlQuery = supabase
+      .from('activities')
+      .select('*, venue:venues(*)')
+      .eq('published', true)
+      .is('cancelled_at', null)
+      .eq('external_url', externalUrl)
+      .order('created_at', { ascending: true })
+      .limit(1);
+    if (excludePlanId) urlQuery = urlQuery.neq('id', excludePlanId);
+    const { data: urlRows, error: urlError } = await urlQuery;
+    if (urlError) throw urlError;
+    row = urlRows?.[0] as Record<string, unknown> | undefined;
+  }
+  if (!row) return null;
+  const planId = row.id as UUID;
+  const { data: participants, error: participantError } = await supabase
+    .rpc('plan_participants', { p_plan_ids: [planId] });
+  if (participantError) throw participantError;
+  return buildSocialProof(row, (participants ?? []) as PlanParticipant[], me);
 }
 
 async function cancelPlan(planId: UUID): Promise<void> {
@@ -1253,6 +1296,7 @@ export const data = {
   setPlanRsvp,
   clearPlanRsvp,
   importPlanLink,
+  findExistingPlan,
   updateActivityInteraction,
   getNearbyParents,
   getVisibleConnectionAvatars,

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
+  Platform,
   Pressable,
   ScrollView,
   Switch,
@@ -10,11 +11,12 @@ import {
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { AvatarCircle, Icon, TerracottaButton } from '@/components/ui';
 import { colors, fonts, radii } from '@/lib/constants';
 import { data } from '@/lib/data';
 import { readableError } from '@/lib/error-message';
-import type { ConnectionView, PlanInput, PlanLinkPreview, PlanVisibility, UUID } from '@/types';
+import type { ActivitySocialProof, ConnectionView, PlanInput, PlanLinkPreview, PlanVisibility, UUID } from '@/types';
 
 const AUDIENCES: { value: PlanVisibility; label: string; detail: string; icon: 'sun' | 'person.2' | 'lock' }[] = [
   { value: 'public', label: 'Public', detail: 'Any signed-in Village parent can discover it.', icon: 'sun' },
@@ -31,8 +33,12 @@ export function PlanEditorScreen() {
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<PlanLinkPreview | null>(null);
+  const [existingPlan, setExistingPlan] = useState<ActivitySocialProof | null>(null);
+  const [createSeparatePlan, setCreateSeparatePlan] = useState(false);
+  const [myId, setMyId] = useState<UUID | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sourceUrl, setSourceUrl] = useState('');
+  const [sourceKey, setSourceKey] = useState('');
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [emoji, setEmoji] = useState('✨');
@@ -56,6 +62,7 @@ export function PlanEditorScreen() {
       data.getCurrentUser(),
     ]).then(([rows, proof, invitees, me]) => {
       if (!active) return;
+      setMyId(me.id);
       setConnections(rows.filter((row) => row.connection.status === 'connected'));
       setInvitedIds(new Set(invitees));
       if (proof) {
@@ -68,6 +75,7 @@ export function PlanEditorScreen() {
         setDescription(plan.description ?? '');
         setEmoji(plan.emoji ?? '✨');
         setSourceUrl(plan.external_url ?? '');
+        setSourceKey(plan.external_source_key ?? '');
         setCoverImageUrl(plan.cover_image_url ?? '');
         setLocationName(plan.location_name ?? proof.venue?.name ?? '');
         setLocationAddress(plan.location_address ?? '');
@@ -98,19 +106,29 @@ export function PlanEditorScreen() {
     setError(null);
     try {
       const preview = await data.importPlanLink(sourceUrl.trim());
+      const match = await data.findExistingPlan(preview.sourceKey, preview.url, id);
       setSourceUrl(preview.url);
+      setSourceKey(preview.sourceKey);
       if (preview.title) setName(preview.title);
       if (preview.description) setDescription(preview.description);
       if (preview.imageUrl) setCoverImageUrl(preview.imageUrl);
       if (preview.emoji) setEmoji(preview.emoji);
       if (preview.locationName) setLocationName(preview.locationName);
       if (preview.locationAddress) setLocationAddress(preview.locationAddress);
-      if (preview.startDate) setDate(preview.startDate);
-      if (preview.startTime) setTime(preview.startTime);
-      if (preview.endDate) setEndDate(preview.endDate);
-      if (preview.endTime) setEndTime(preview.endTime);
+      if (preview.startDate) {
+        setDate(preview.startDate);
+        if (preview.startTime) setTime(preview.startTime);
+        else if (preview.allDay !== true) setTime('');
+      }
+      if (preview.endDate) {
+        setEndDate(preview.endDate);
+        if (preview.endTime) setEndTime(preview.endTime);
+        else if (preview.allDay !== true) setEndTime('');
+      }
       if (preview.allDay !== null) setAllDay(preview.allDay);
       setImportResult(preview);
+      setExistingPlan(match);
+      setCreateSeparatePlan(false);
     } catch (cause) {
       setError(readableError(cause, 'Could not import that link. You can still add its details manually.'));
     } finally {
@@ -130,6 +148,9 @@ export function PlanEditorScreen() {
     setSaving(true);
     setError(null);
     try {
+      if (existingPlan && !createSeparatePlan) {
+        throw new Error('This listing is already in Village. Open the existing plan to coordinate there, or choose to make a separate plan.');
+      }
       const startsAt = parseLocalDateTime(date, time, allDay);
       const endsAt = endDate.trim()
         ? parseLocalDateTime(endDate, endTime || time, allDay)
@@ -149,6 +170,7 @@ export function PlanEditorScreen() {
         location_name: locationName.trim(),
         location_address: locationAddress.trim(),
         external_url: sourceUrl.trim(),
+        external_source_key: sourceKey,
         cover_image_url: coverImageUrl.trim(),
       };
       const saved = id ? await data.updatePlan(id, input) : await data.createPlan(input);
@@ -178,10 +200,16 @@ export function PlanEditorScreen() {
 
       <ScrollView contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
         <Section eyebrow="IMPORT" title="start with a link">
-          <Text style={styles.help}>Paste a camp, market, class, or event page. Village will read the listing and prefill whatever it can find. You review everything before publishing.</Text>
+          <Text style={styles.help}>Have a camp, class, or event listing? Paste it here and Village will prefill the shared facts. Planning something informal, like a Sonoma house weekend? Skip the link and fill in the plan below.</Text>
           <TextInput
             value={sourceUrl}
-            onChangeText={(value) => { setSourceUrl(value); setImportResult(null); }}
+            onChangeText={(value) => {
+              setSourceUrl(value);
+              setSourceKey('');
+              setImportResult(null);
+              setExistingPlan(null);
+              setCreateSeparatePlan(false);
+            }}
             onSubmitEditing={importLink}
             returnKeyType="go"
             autoCapitalize="none"
@@ -200,9 +228,33 @@ export function PlanEditorScreen() {
                   Filled {importResult.importedFields.length} detail{importResult.importedFields.length === 1 ? '' : 's'}
                 </Text>
                 <Text style={styles.help}>
-                  {importResult.inference === 'ai' ? 'AI-assisted import' : 'Read from the listing'} · review below before publishing
+                  {importResult.inference === 'ai'
+                    ? 'AI-assisted import'
+                    : importResult.inference === 'provider'
+                      ? 'Filled from the link'
+                      : 'Read from the listing'} · review below before publishing
                 </Text>
               </View>
+            </View>
+          ) : null}
+          {importResult?.warnings.map((warning) => (
+            <View key={warning} style={styles.importWarning}>
+              <Icon name="info" size={18} color={colors.terracotta} />
+              <Text selectable style={[styles.help, { flex: 1, color: colors.brownMid }]}>{warning}</Text>
+            </View>
+          ))}
+          {existingPlan && !createSeparatePlan ? (
+            <View style={styles.existingPlan}>
+              <Text style={styles.eyebrow}>ALREADY IN VILLAGE</Text>
+              <Text style={styles.existingTitle}>{existingPlan.activity.name}</Text>
+              <Text style={styles.help}>
+                {existingPlan.activity.created_by === myId ? 'You already added this listing.' : 'Someone you can see already added this listing.'}{' '}
+                {participantCount(existingPlan)} {participantCount(existingPlan) === 1 ? 'family is' : 'families are'} coordinating there.
+              </Text>
+              <SecondaryButton label="open existing plan →" onPress={() => router.replace(`/plan/${existingPlan.activity.id}` as never)} />
+              <Pressable onPress={() => setCreateSeparatePlan(true)} style={{ alignSelf: 'center', padding: 6 }}>
+                <Text style={styles.separateText}>this is actually a separate plan</Text>
+              </Pressable>
             </View>
           ) : null}
         </Section>
@@ -219,13 +271,33 @@ export function PlanEditorScreen() {
 
         <Section eyebrow="WHEN" title="pick a day">
           <View style={{ flexDirection: 'row', gap: 10 }}>
-            <LabeledField label="START DATE" value={date} onChangeText={setDate} placeholder="2026-08-15" />
-            {!allDay ? <LabeledField label="TIME" value={time} onChangeText={setTime} placeholder="09:00" compact /> : null}
+            <PickerField label="START DATE" mode="date" dateValue={date} timeValue={time} onChange={setDate} />
+            {!allDay ? time ? (
+              <PickerField label="TIME" mode="time" dateValue={date} timeValue={time} onChange={setTime} compact />
+            ) : (
+              <AddTimeButton label="ADD TIME" onPress={() => setTime('09:00')} />
+            ) : null}
           </View>
-          <View style={{ flexDirection: 'row', gap: 10 }}>
-            <LabeledField label="END DATE · OPTIONAL" value={endDate} onChangeText={setEndDate} placeholder="2026-08-15" />
-            {!allDay && endDate ? <LabeledField label="TIME" value={endTime} onChangeText={setEndTime} placeholder="12:00" compact /> : null}
-          </View>
+          {endDate ? (
+            <View style={{ gap: 8 }}>
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <PickerField label="END DATE" mode="date" dateValue={endDate} timeValue={endTime || time} onChange={setEndDate} minimumDate={dateFromInputs(date, time)} />
+                {!allDay ? endTime ? (
+                  <PickerField label="TIME" mode="time" dateValue={endDate} timeValue={endTime} onChange={setEndTime} compact />
+                ) : (
+                  <AddTimeButton label="END TIME" onPress={() => setEndTime(defaultEndTime(time))} />
+                ) : null}
+              </View>
+              <Pressable onPress={() => { setEndDate(''); setEndTime(''); }} style={{ alignSelf: 'flex-start', paddingVertical: 4 }}>
+                <Text style={styles.separateText}>remove end date</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <Pressable onPress={() => { setEndDate(date); setEndTime(allDay ? '' : defaultEndTime(time)); }} style={styles.addEndButton}>
+              <Icon name="plus.circle" size={18} color={colors.terracotta} />
+              <Text style={styles.secondaryText}>add an end date or camp range</Text>
+            </Pressable>
+          )}
           <View style={styles.toggleRow}>
             <View style={{ flex: 1 }}><Text style={styles.rowLabel}>All-day plan</Text><Text style={styles.help}>Useful for camp weeks and day trips.</Text></View>
             <Switch value={allDay} onValueChange={setAllDay} trackColor={{ true: colors.terracotta }} />
@@ -262,7 +334,7 @@ export function PlanEditorScreen() {
         </Section>
 
         {error ? <Text selectable style={styles.error}>{error}</Text> : null}
-        <TerracottaButton label={saving ? 'saving plan…' : editing ? 'save changes →' : 'publish plan →'} onPress={save} disabled={saving || !name.trim()} fullWidth />
+        <TerracottaButton label={saving ? 'saving plan…' : editing ? 'save changes →' : 'publish plan →'} onPress={save} disabled={saving || !name.trim() || Boolean(existingPlan && !createSeparatePlan)} fullWidth />
       </ScrollView>
     </SafeAreaView>
   );
@@ -272,8 +344,62 @@ function Section({ eyebrow, title, children }: { eyebrow: string; title: string;
   return <View style={styles.section}><Text style={styles.eyebrow}>{eyebrow}</Text><Text style={styles.sectionTitle}>{title}</Text>{children}</View>;
 }
 
-function LabeledField({ label, compact, ...props }: { label: string; compact?: boolean; value: string; onChangeText: (value: string) => void; placeholder: string }) {
-  return <View style={{ flex: compact ? 0 : 1, width: compact ? 104 : undefined, gap: 5 }}><Text style={styles.eyebrow}>{label}</Text><TextInput {...props} autoCapitalize="none" placeholderTextColor={colors.taupe} style={styles.field} /></View>;
+function PickerField({ label, mode, dateValue, timeValue, onChange, compact, minimumDate }: {
+  label: string;
+  mode: 'date' | 'time';
+  dateValue: string;
+  timeValue: string;
+  onChange: (value: string) => void;
+  compact?: boolean;
+  minimumDate?: Date;
+}) {
+  const [androidPickerOpen, setAndroidPickerOpen] = useState(false);
+  const picker = (
+    <DateTimePicker
+      value={dateFromInputs(dateValue, timeValue)}
+      mode={mode}
+      display={Platform.OS === 'ios' ? 'compact' : 'default'}
+      minimumDate={minimumDate}
+      minuteInterval={5}
+      onChange={(_, selected) => {
+        if (Platform.OS === 'android') setAndroidPickerOpen(false);
+        if (!selected) return;
+        onChange(mode === 'date' ? formatDateInput(selected) : formatTimeInput(selected));
+      }}
+    />
+  );
+
+  return (
+    <View style={{ flex: compact ? 0 : 1, minWidth: compact ? 112 : 0, gap: 5 }}>
+      <Text style={styles.eyebrow}>{label}</Text>
+      <View style={styles.pickerField}>
+        {Platform.OS === 'ios' ? picker : (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Choose ${label.toLowerCase()}`}
+            onPress={() => setAndroidPickerOpen(true)}
+            style={styles.androidPickerButton}
+          >
+            <Text style={styles.androidPickerValue}>{mode === 'date' ? dateValue : timeValue}</Text>
+            <Icon name="chevron.right" size={15} color={colors.taupe} />
+          </Pressable>
+        )}
+      </View>
+      {Platform.OS === 'android' && androidPickerOpen ? picker : null}
+    </View>
+  );
+}
+
+function AddTimeButton({ label, onPress }: { label: string; onPress: () => void }) {
+  return (
+    <View style={{ width: 112, gap: 5 }}>
+      <Text style={styles.eyebrow}>{label}</Text>
+      <Pressable onPress={onPress} style={styles.pickerField}>
+        <Icon name="plus.circle" size={18} color={colors.terracotta} />
+        <Text style={styles.secondaryText}>add</Text>
+      </Pressable>
+    </View>
+  );
 }
 
 function SecondaryButton({ label, loading, onPress }: { label: string; loading?: boolean; onPress: () => void }) {
@@ -296,6 +422,35 @@ function formatDateInput(date: Date): string {
 
 function formatTimeInput(date: Date): string {
   return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+
+function dateFromInputs(dateValue: string, timeValue: string): Date {
+  const dateMatch = dateValue.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const timeMatch = timeValue.match(/^(\d{2}):(\d{2})$/);
+  if (!dateMatch) return nextFriendlyStart();
+  return new Date(
+    Number(dateMatch[1]),
+    Number(dateMatch[2]) - 1,
+    Number(dateMatch[3]),
+    timeMatch ? Number(timeMatch[1]) : 9,
+    timeMatch ? Number(timeMatch[2]) : 0,
+  );
+}
+
+function defaultEndTime(startTime: string): string {
+  const match = startTime.match(/^(\d{2}):(\d{2})$/);
+  if (!match) return '15:00';
+  const minutes = (Number(match[1]) * 60 + Number(match[2]) + 180) % (24 * 60);
+  return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+}
+
+function participantCount(proof: ActivitySocialProof): number {
+  const responses = proof.goingConnections.length
+    + proof.interestedConnections.length
+    + proof.outConnections.length
+    + (proof.myState ? 1 : 0);
+  // The creator is already coordinating even before they add an RSVP.
+  return Math.max(1, responses);
 }
 
 function parseLocalDateTime(dateValue: string, timeValue: string, allDay: boolean): string {
@@ -327,10 +482,18 @@ const styles = {
   help: { fontFamily: fonts.sans, fontSize: 11.5, lineHeight: 17, color: colors.taupe } as const,
   field: { minHeight: 46, paddingHorizontal: 12, borderRadius: radii.md, borderWidth: 1, borderColor: colors.rule, backgroundColor: colors.cream, fontFamily: fonts.sansSemi, fontSize: 13.5, color: colors.dark } as const,
   multiline: { minHeight: 100, paddingTop: 12, textAlignVertical: 'top' } as const,
+  pickerField: { minHeight: 46, paddingHorizontal: 9, borderRadius: radii.md, borderWidth: 1, borderColor: colors.rule, backgroundColor: colors.cream, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 } as const,
+  androidPickerButton: { minHeight: 44, flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6 } as const,
+  androidPickerValue: { fontFamily: fonts.sansSemi, fontSize: 13.5, color: colors.dark } as const,
+  addEndButton: { minHeight: 44, paddingHorizontal: 12, borderRadius: radii.md, borderWidth: 1, borderColor: colors.rule, backgroundColor: colors.cream, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 } as const,
   secondaryButton: { minHeight: 44, borderRadius: radii.md, borderWidth: 1, borderColor: colors.rule, backgroundColor: colors.cream, alignItems: 'center', justifyContent: 'center' } as const,
   secondaryText: { fontFamily: fonts.sansExtra, fontSize: 12, color: colors.terracotta } as const,
   importSuccess: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: radii.md, borderWidth: 1, borderColor: colors.sage, backgroundColor: colors.sageSoft } as const,
   importSuccessTitle: { fontFamily: fonts.sansExtra, fontSize: 12.5, color: colors.dark } as const,
+  importWarning: { flexDirection: 'row', alignItems: 'flex-start', gap: 9, padding: 11, borderRadius: radii.md, borderWidth: 1, borderColor: colors.rule, backgroundColor: colors.cream } as const,
+  existingPlan: { gap: 9, padding: 13, borderRadius: radii.md, borderWidth: 1.5, borderColor: colors.terracotta, backgroundColor: '#FFF6EF' } as const,
+  existingTitle: { fontFamily: fonts.serifRegular, fontSize: 22, lineHeight: 25, color: colors.dark } as const,
+  separateText: { fontFamily: fonts.sansBold, fontSize: 11, color: colors.taupe, textDecorationLine: 'underline' } as const,
   toggleRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingTop: 4 } as const,
   rowLabel: { fontFamily: fonts.sansExtra, fontSize: 13.5, color: colors.dark } as const,
   audienceCard: { flexDirection: 'row', alignItems: 'center', gap: 11, padding: 12, borderWidth: 1, borderColor: colors.rule, borderRadius: radii.md, backgroundColor: colors.cream } as const,

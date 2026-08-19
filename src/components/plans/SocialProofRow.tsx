@@ -8,12 +8,13 @@ type SocialProofProps = {
   goingConnections: PlanParticipant[];
   interestedConnections: PlanParticipant[];
   outConnections?: PlanParticipant[];
+  hasExternalListing?: boolean;
 };
 
 /**
  * Compact participant stacks for going, interested, and out responses.
  */
-export function SocialProofRow({ goingConnections, interestedConnections, outConnections = [] }: SocialProofProps) {
+export function SocialProofRow({ goingConnections, interestedConnections, outConnections = [], hasExternalListing = false }: SocialProofProps) {
   const hasGoing = goingConnections.length > 0;
   const hasInterest = interestedConnections.length > 0;
   const hasOut = outConnections.length > 0;
@@ -35,9 +36,9 @@ export function SocialProofRow({ goingConnections, interestedConnections, outCon
 
   return (
     <View style={{ flex: 1, gap: 6 }}>
-      {hasGoing ? <SingleStack parents={goingConnections} label="going" accent={colors.sage} bold /> : null}
-      {hasInterest ? <SingleStack parents={interestedConnections} label="interested" accent={colors.taupe} compact={hasGoing} /> : null}
-      {hasOut ? <SingleStack parents={outConnections} label="out" accent={colors.terracotta} compact /> : null}
+      {hasGoing ? <SingleStack parents={goingConnections} label={hasExternalListing ? 'signed up' : 'going'} accent={colors.sage} bold /> : null}
+      {hasInterest ? <SingleStack parents={interestedConnections} label={hasExternalListing ? 'considering it' : 'interested'} accent={colors.taupe} compact={hasGoing} /> : null}
+      {hasOut ? <SingleStack parents={outConnections} label={hasExternalListing ? 'not this time' : 'can’t make it'} accent={colors.terracotta} compact /> : null}
     </View>
   );
 }

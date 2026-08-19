@@ -21,9 +21,10 @@ begin
   perform public.respond_connection('82000000-0000-4000-8000-000000000001', true);
 
   perform set_config('request.jwt.claim.sub', '82000000-0000-4000-8000-000000000011', true);
-  created := public.create_plan(
+  created := public.create_plan_v2(
     'Public market day', 'Bring a tote', '🥕', now() + interval '1 day', null,
-    false, 'public', '{}'::uuid[], 'Test market', null, 'https://example.com', null
+    false, 'public', '{}'::uuid[], 'Test market', null, 'https://example.com', null,
+    'url:https://example.com/'
   );
   public_plan := (created #>> '{plan,id}')::uuid;
 
@@ -43,6 +44,10 @@ begin
   perform set_config('request.jwt.claim.sub', '82000000-0000-4000-8000-000000000013', true);
   assert public.can_view_plan(public_plan),
     'any parent should be able to view a public plan';
+  assert exists (
+    select 1 from public.activities
+    where id = public_plan and external_source_key = 'url:https://example.com/'
+  ), 'visible parents should be able to match an imported plan by source key';
   assert not public.can_view_plan(village_plan),
     'a non-connection should not see a village plan';
   assert not public.can_view_plan(invited_plan),

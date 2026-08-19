@@ -11,6 +11,7 @@ export type InterestSheetPayload = {
   activityId: UUID;
   activityName: string;
   emoji: string | null;
+  hasExternalListing: boolean;
   currentState: InteractionState | null;
   onChanged: (next: InteractionState | null) => void;
 };

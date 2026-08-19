@@ -19,6 +19,7 @@ import { ActivityCardSkeleton, EmptyState, Icon, ScreenHeader } from '@/componen
 import { colors, fonts, radii } from '@/lib/constants';
 import { data } from '@/lib/data';
 import { readableError } from '@/lib/error-message';
+import { planDateKeys, planOccursOnDay } from '@/lib/plan-dates';
 import type { ActivitySocialProof, PlanVisibility, UUID } from '@/types';
 
 type ViewMode = 'list' | 'calendar';
@@ -118,7 +119,7 @@ export default function PlansScreen() {
   }, [audience, myId, plans, query, sort, timeRange]);
 
   const selectedPlans = useMemo(
-    () => filtered.filter((proof) => proof.activity.starts_at && isSameDay(new Date(proof.activity.starts_at), selectedDay)),
+    () => filtered.filter((proof) => planOccursOnDay(proof.activity, selectedDay)),
     [filtered, selectedDay],
   );
 
@@ -278,9 +279,9 @@ function CalendarView({ month, selectedDay, plans, selectedPlans, error, refresh
   });
   const countByDay = new Map<string, number>();
   plans.forEach((proof) => {
-    if (!proof.activity.starts_at) return;
-    const key = format(new Date(proof.activity.starts_at), 'yyyy-MM-dd');
-    countByDay.set(key, (countByDay.get(key) ?? 0) + 1);
+    planDateKeys(proof.activity).forEach((key) => {
+      countByDay.set(key, (countByDay.get(key) ?? 0) + 1);
+    });
   });
 
   return (

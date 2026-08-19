@@ -17,6 +17,7 @@ import { AvatarCircle, Icon, PhotoTile, TerracottaButton } from '@/components/ui
 import { colors, fonts, radii, type AvatarTone } from '@/lib/constants';
 import { data } from '@/lib/data';
 import { readableError } from '@/lib/error-message';
+import { planRsvpCopy } from '@/lib/plan-rsvp-copy';
 import type { ActivitySocialProof, InteractionState, PlanParticipant, UUID } from '@/types';
 
 type PlanDetailScreenProps = { id: UUID };
@@ -107,6 +108,7 @@ export function PlanDetailScreen({ id }: PlanDetailScreenProps) {
   const isOwner = activity.created_by === myId;
   const state = myState === 'going' || myState === 'interested' || myState === 'out' ? myState : null;
   const noteChanged = rsvpNote.trim() !== (proof.myRsvpNote ?? '');
+  const rsvpCopy = planRsvpCopy(Boolean(activity.external_url));
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.cream }} edges={['top', 'bottom']}>
@@ -152,24 +154,24 @@ export function PlanDetailScreen({ id }: PlanDetailScreenProps) {
 
         <View style={styles.section}>
           <Text style={styles.eyebrow}>YOUR RSVP</Text>
-          <Text style={styles.sectionTitle}>{activity.cancelled_at ? 'this plan was cancelled' : 'does this work for you?'}</Text>
+          <Text style={styles.sectionTitle}>{activity.cancelled_at ? 'this plan was cancelled' : rsvpCopy.prompt}</Text>
           {!activity.cancelled_at ? (
             <>
               <View style={styles.rsvpRow}>
-                <RsvpButton label="Going" emoji="✓" selected={state === 'going'} disabled={saving} onPress={() => setRsvp('going')} />
-                <RsvpButton label="Interested" emoji="♡" selected={state === 'interested'} disabled={saving} onPress={() => setRsvp('interested')} />
-                <RsvpButton label="Out" emoji="×" selected={state === 'out'} disabled={saving} onPress={() => setRsvp('out')} />
+                <RsvpButton label={rsvpCopy.going} emoji="✓" selected={state === 'going'} disabled={saving} onPress={() => setRsvp('going')} />
+                <RsvpButton label={rsvpCopy.interested} emoji="♡" selected={state === 'interested'} disabled={saving} onPress={() => setRsvp('interested')} />
+                <RsvpButton label={rsvpCopy.out} emoji="×" selected={state === 'out'} disabled={saving} onPress={() => setRsvp('out')} />
               </View>
               {state ? (
                 <View style={styles.rsvpDetails}>
-                  <Text style={styles.rowLabel}>Your details · optional</Text>
-                  <Text style={styles.helpLeft}>Add whichever specifics matter to your family—kids, weeks, timing, pickup, or anything else.</Text>
+                  <Text style={styles.rowLabel}>{rsvpCopy.detailsLabel}</Text>
+                  <Text style={styles.helpLeft}>{rsvpCopy.detailsHelp}</Text>
                   <TextInput
                     value={rsvpNote}
                     onChangeText={setRsvpNote}
                     maxLength={500}
                     multiline
-                    placeholder="Leo · weeks 2, 4, and 6"
+                    placeholder={rsvpCopy.detailsPlaceholder}
                     placeholderTextColor={colors.taupe}
                     style={styles.rsvpNote}
                   />
@@ -185,9 +187,9 @@ export function PlanDetailScreen({ id }: PlanDetailScreenProps) {
           ) : null}
         </View>
 
-        <ParticipantSection title="Going" people={goingConnections} empty="No one else has said they’re going yet." />
-        <ParticipantSection title="Interested" people={interestedConnections} empty="No one else is watching this one yet." />
-        {outConnections.length ? <ParticipantSection title="Out" people={outConnections} empty="" subdued /> : null}
+        <ParticipantSection title={rsvpCopy.going} people={goingConnections} empty={activity.external_url ? 'No other families have marked themselves signed up yet.' : 'No one else has said they’re going yet.'} />
+        <ParticipantSection title={rsvpCopy.interested} people={interestedConnections} empty="No one else is watching this one yet." />
+        {outConnections.length ? <ParticipantSection title={rsvpCopy.out} people={outConnections} empty="" subdued /> : null}
 
         {error ? <Text selectable style={styles.error}>{error}</Text> : null}
         {isOwner && !activity.cancelled_at ? (

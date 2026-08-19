@@ -3,6 +3,7 @@ import { Image } from 'expo-image';
 import { colors, fonts, type AvatarTone } from '@/lib/constants';
 import { FadeOverlay, PhotoTile, TimeStampPill } from '@/components/ui';
 import { dayShort, timeShort } from '@/lib/format';
+import { planStateLabel } from '@/lib/plan-rsvp-copy';
 import { presentInterestSheet } from './InterestSheet';
 import { SocialProofRow } from './SocialProofRow';
 import type { ActivitySocialProof, InteractionState } from '@/types';
@@ -28,8 +29,9 @@ export function ActivityCard({ proof, rotation = 0, onStateChanged, onOpen }: Ac
   const tone = toneForActivity(activity.emoji);
   const imageUrl = activity.cover_image_url ?? venue?.image_url ?? null;
   const location = activity.location_name ?? venue?.name ?? null;
+  const hasExternalListing = Boolean(activity.external_url);
 
-  const buttonLabel = activity.cancelled_at ? 'Cancelled' : labelForState(myState);
+  const buttonLabel = activity.cancelled_at ? 'Cancelled' : planStateLabel(myState, hasExternalListing);
 
   return (
     <View style={{ position: 'relative', marginBottom: 26 }}>
@@ -161,6 +163,7 @@ export function ActivityCard({ proof, rotation = 0, onStateChanged, onOpen }: Ac
             goingConnections={goingConnections}
             interestedConnections={interestedConnections}
             outConnections={outConnections}
+            hasExternalListing={hasExternalListing}
           />
           <Pressable
             disabled={Boolean(activity.cancelled_at)}
@@ -170,6 +173,7 @@ export function ActivityCard({ proof, rotation = 0, onStateChanged, onOpen }: Ac
                 activityName: activity.name,
                 emoji: activity.emoji,
                 currentState: myState,
+                hasExternalListing,
                 onChanged: (next) => onStateChanged?.(next),
               })
             }
@@ -224,20 +228,6 @@ export function ActivityCard({ proof, rotation = 0, onStateChanged, onOpen }: Ac
       ) : null}
     </View>
   );
-}
-
-function labelForState(state: InteractionState | null): string {
-  switch (state) {
-    case 'going':
-    case 'attended':
-      return 'Going ✓';
-    case 'interested':
-      return 'Interested';
-    case 'out':
-      return 'Out';
-    default:
-      return "I'm in →";
-  }
 }
 
 function visibilityLabel(visibility: ActivitySocialProof['activity']['visibility']): string {

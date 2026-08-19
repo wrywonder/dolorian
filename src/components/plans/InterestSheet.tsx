@@ -13,8 +13,10 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
+import { router } from 'expo-router';
 import { colors, fonts } from '@/lib/constants';
 import { data } from '@/lib/data';
+import { planRsvpCopy } from '@/lib/plan-rsvp-copy';
 import { Icon, TwinkleSparkle } from '@/components/ui';
 import { useInterestSheet } from '@/store/interestSheet';
 import type { InteractionState } from '@/types';
@@ -55,6 +57,7 @@ export function InterestSheetHost() {
   }));
 
   if (!payload) return null;
+  const copy = planRsvpCopy(payload.hasExternalListing);
 
   const handlePick = async (next: InteractionState | null) => {
     if (saving) return;
@@ -69,6 +72,9 @@ export function InterestSheetHost() {
       }
       payload.onChanged(next);
       dismiss();
+      if (payload.hasExternalListing && next === 'going') {
+        router.push(`/plan/${payload.activityId}` as never);
+      }
     } catch {
       setError('Could not update your response. Please try again.');
     } finally {
@@ -140,7 +146,7 @@ export function InterestSheetHost() {
                 letterSpacing: 0.6,
               }}
             >
-              WHAT'S YOUR MOVE?
+              {payload.hasExternalListing ? 'REGISTRATION STATUS' : "WHAT'S YOUR MOVE?"}
             </Text>
             <Text
               style={{
@@ -159,15 +165,20 @@ export function InterestSheetHost() {
 
         <View style={{ gap: 10, marginTop: 16 }}>
           <SheetButton
-            label="I'm going"
+            label={payload.hasExternalListing ? "We're signed up" : "I'm going"}
             tint="terracotta"
             iconLeft={<Icon name="wave" size={20} color={colors.white} weight={2.4} />}
             selected={payload.currentState === 'going' || payload.currentState === 'attended'}
             disabled={saving}
             onPress={() => handlePick('going')}
           />
+          {payload.hasExternalListing ? (
+            <Text style={{ fontFamily: fonts.sans, fontSize: 11.5, lineHeight: 17, color: colors.taupe, textAlign: 'center', paddingHorizontal: 12 }}>
+              Signed up opens the plan so you can add child, days, times, or group details.
+            </Text>
+          ) : null}
           <SheetButton
-            label="Interested"
+            label={copy.interested}
             tint="sage"
             iconLeft={<Icon name="sparkle" size={18} color={colors.sage} weight={2} />}
             selected={payload.currentState === 'interested'}
@@ -175,7 +186,7 @@ export function InterestSheetHost() {
             onPress={() => handlePick('interested')}
           />
           <SheetButton
-            label="I’m out"
+            label={copy.out}
             tint="ghost"
             iconLeft={<Icon name="x" size={17} color={colors.taupe} weight={2} />}
             selected={payload.currentState === 'out'}
@@ -269,6 +280,7 @@ export function presentInterestSheet(args: {
   activityId: string;
   activityName: string;
   emoji: string | null;
+  hasExternalListing: boolean;
   currentState: InteractionState | null;
   onChanged: (state: InteractionState | null) => void;
 }) {

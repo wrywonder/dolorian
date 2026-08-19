@@ -6,6 +6,7 @@ const planDefaults = {
   location_name: null,
   location_address: null,
   external_url: null,
+  external_source_key: null,
   cover_image_url: null,
   all_day: false,
   updated_at: '2026-04-25T00:00:00Z',

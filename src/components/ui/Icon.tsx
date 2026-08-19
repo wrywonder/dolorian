@@ -21,7 +21,7 @@ export type IconName =
   | 'ellipsis' | 'person.2' | 'qrcode' | 'shield'
   | 'star' | 'star.fill'
   | 'arrow.right' | 'arrow.up' | 'paper.plane' | 'pencil' | 'link'
-  | 'wave' | 'sun' | 'gear' | 'bell';
+  | 'wave' | 'sun' | 'gear' | 'bell' | 'info';
 
 type IconProps = {
   name: IconName;
@@ -195,6 +195,13 @@ export function Icon({ name, size = 24, color = '#2D241B', weight = 1.8 }: IconP
         <Svg {...dim} viewBox="0 0 24 24">
           <Circle cx={12} cy={12} r={9} {...stroke} />
           <Path d="M8 12.5l2.5 2.5L16 9.5" {...stroke} />
+        </Svg>
+      );
+    case 'info':
+      return (
+        <Svg {...dim} viewBox="0 0 24 24">
+          <Circle cx={12} cy={12} r={9} {...stroke} />
+          <Path d="M12 10.5V17M12 7.2h.01" {...stroke} strokeWidth={2.1} />
         </Svg>
       );
     case 'camera':
