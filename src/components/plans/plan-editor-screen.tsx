@@ -119,6 +119,11 @@ export function PlanEditorScreen() {
         setDate(preview.startDate);
         if (preview.startTime) setTime(preview.startTime);
         else if (preview.allDay !== true) setTime('');
+      } else {
+        setTime('');
+        setEndDate('');
+        setEndTime('');
+        setAllDay(false);
       }
       if (preview.endDate) {
         setEndDate(preview.endDate);
@@ -334,7 +339,7 @@ export function PlanEditorScreen() {
         </Section>
 
         {error ? <Text selectable style={styles.error}>{error}</Text> : null}
-        <TerracottaButton label={saving ? 'saving plan…' : editing ? 'save changes →' : 'publish plan →'} onPress={save} disabled={saving || !name.trim() || Boolean(existingPlan && !createSeparatePlan)} fullWidth />
+        <TerracottaButton label={saving ? 'saving plan…' : editing ? 'save changes →' : 'publish plan →'} onPress={save} disabled={saving || !name.trim() || (!allDay && !time) || Boolean(existingPlan && !createSeparatePlan)} fullWidth />
       </ScrollView>
     </SafeAreaView>
   );
