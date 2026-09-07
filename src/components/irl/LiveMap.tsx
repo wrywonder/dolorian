@@ -160,6 +160,7 @@ function LiveMapContent({ pins, venues, meId }: LiveMapProps) {
                       <PhotoAvatar
                         key={pin.parent.id}
                         tone={pin.parent.avatar_color as AvatarTone}
+                        imageUrl={pin.parent.avatar_url}
                         size={pin.parent.id === meId ? 46 : 42}
                         ringWidth={3}
                         ringColor={pin.parent.id === meId ? colors.terracotta : colors.white}
@@ -213,13 +214,25 @@ function LiveMapContent({ pins, venues, meId }: LiveMapProps) {
         />
       ) : null}
       {pins.length === 0 ? (
-        <MapMessage text="no connections are checked in right now" position="bottom" />
+        <MapMessage
+          text="no connections are checked in right now"
+          position="top"
+          offset={permission === 'denied' || permission === 'error' ? 54 : 12}
+        />
       ) : null}
     </View>
   );
 }
 
-function MapMessage({ text, position }: { text: string; position: 'top' | 'bottom' }) {
+function MapMessage({
+  text,
+  position,
+  offset = 12,
+}: {
+  text: string;
+  position: 'top' | 'bottom';
+  offset?: number;
+}) {
   return (
     <View
       pointerEvents="none"
@@ -227,7 +240,7 @@ function MapMessage({ text, position }: { text: string; position: 'top' | 'botto
         position: 'absolute',
         left: 12,
         right: 12,
-        [position]: 12,
+        [position]: offset,
         alignItems: 'center',
       }}
     >

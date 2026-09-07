@@ -1,7 +1,8 @@
 import { Pressable, Text, View } from 'react-native';
 import { colors, fonts, type AvatarTone } from '@/lib/constants';
-import { AvatarCircle, FadeOverlay, Icon, PhotoTile } from '@/components/ui';
+import { AvatarCircle, FadeOverlay, Icon } from '@/components/ui';
 import type { ConnectionStatus, Parent } from '@/types';
+import { ProfileCover } from './profile-cover';
 
 type ProfileHeaderProps = {
   parent: Parent;
@@ -28,7 +29,7 @@ export function ProfileHeader({
   isSelf,
   onSettingsPress,
 }: ProfileHeaderProps) {
-  const tone: AvatarTone = parent.avatar_color;
+  const tone: AvatarTone = parent.profile_background ?? parent.avatar_color;
   const firstName = parent.display_name.split(' ')[0] ?? parent.display_name;
   const lastName = parent.display_name.split(' ').slice(1).join(' ');
 
@@ -36,8 +37,14 @@ export function ProfileHeader({
 
   return (
     <View style={{ position: 'relative', height: 400, overflow: 'hidden' }}>
-      <PhotoTile tone={tone} height={400} label={label.toUpperCase()} />
+      <ProfileCover
+        imageUrl={parent.profile_background_url}
+        tone={tone}
+        height={400}
+        label={label.toUpperCase()}
+      />
       <FadeOverlay direction="top" intensity={0.75} transparentUntil={0.6} />
+      <FadeOverlay direction="bottom" intensity={0.7} transparentUntil={0.38} />
 
       {/* Top-row chrome */}
       <View
@@ -86,7 +93,7 @@ export function ProfileHeader({
             justifyContent: 'center',
           }}
         >
-          <Icon name="gear" size={18} color={colors.dark} weight={1.8} />
+          <Icon name={isSelf ? 'gear' : 'ellipsis'} size={18} color={colors.dark} weight={1.8} />
         </Pressable>
       </View>
 
@@ -96,7 +103,8 @@ export function ProfileHeader({
       <View style={{ position: 'absolute', left: 22, right: 22, bottom: 46 }}>
         <AvatarCircle
           initials={parent.avatar_initials}
-          tone={tone}
+          tone={parent.avatar_color}
+          imageUrl={parent.avatar_url}
           size={92}
           ring={colors.white}
           style={{

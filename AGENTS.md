@@ -1,4 +1,4 @@
-# Dolorian — Agent Guide
+# Village — Agent Guide
 
 This file is the **single shared brief** for every AI coding tool used on this
 repo. Claude Code reads it via `CLAUDE.md` (which imports `@AGENTS.md`); Codex
@@ -14,7 +14,7 @@ on training memory for Expo/RN APIs, and do not copy patterns from older SDKs.
 
 ## What this is
 
-Dolorian is an Expo (React Native) app for parents — a feed ("Buzz"), plans,
+Village is an Expo (React Native) app for parents — a feed ("Buzz"), plans,
 IRL/venue discovery, prompts, and profiles — backed by Supabase (auth, Postgres
 with RLS, Storage, Edge Functions).
 
@@ -79,6 +79,37 @@ also exist as EAS environment variables (`eas env:create`, or the project's
 Environment Variables page on expo.dev) or release builds ship with an
 unconfigured Supabase client.
 
+## Auth email delivery
+
+- Production auth email is sent through Resend custom SMTP from
+  `Village <login@auth.withvillage.app>`; the verified Resend domain is
+  `auth.withvillage.app`.
+- Keep custom SMTP enabled in Supabase Authentication email settings. SMTP
+  credentials live only in Supabase and Resend — never commit or copy them into
+  `.env` or EAS variables.
+- The app verifies an 8-digit email OTP. Both Supabase templates named
+  **Confirm sign up** and **Magic link or OTP** must include `{{ .Token }}` and
+  must not send `{{ .ConfirmationURL }}` as the primary sign-in action.
+- Supabase is configured for an 8-digit OTP with a 3600-second expiry. Keep
+  `validateLoginCode` and the sign-in screen in sync if that server setting
+  changes.
+
+## Connection invite links
+
+- The app shares stable HTTPS invites at `https://withvillage.app/join/<token>`;
+  never switch these back to the `dolorian://` custom scheme in share copy.
+- Cloudflare Worker `village-invite-links` owns only `/join/*` and
+  `/.well-known/apple-app-site-association`. Its source and Wrangler config live
+  in `cloudflare/invite-links/`.
+- iOS Universal Links use Apple application identifier
+  `756X7G9F7X.com.dolorian.app` and `applinks:withvillage.app` in `app.json`.
+  Changing the team, bundle ID, or associated domain requires a new iOS build.
+- The zone apex has a proxied `A` record to reserved placeholder `192.0.2.1` so
+  the scoped Worker routes resolve. Replace it when the root marketing site is
+  launched; MX/TXT email-routing records are independent.
+- Older builds fall back from the web handoff to `dolorian://invite/<token>`.
+  Keep the legacy `/invite/[token]` app route while old TestFlight builds exist.
+
 ## Conventions
 
 - **TypeScript is strict** (`noUncheckedIndexedAccess`, `noImplicitOverride`,
@@ -112,3 +143,16 @@ This repo is edited by both tools. To keep handoffs clean:
   obvious which tool did what.
 - Both tools must leave `npm run typecheck` green before committing.
 - Put durable project knowledge **here**, so both tools inherit it.
+
+## Beta tester feedback
+
+- TestFlight feedback goes to `beta@withvillage.app`.
+- Cloudflare Email Routing forwards that alias to Drew's Gmail, where the
+  `Village/TestFlight` filter labels incoming reports and keeps them out of spam.
+- App Store Connect screenshot and crash feedback is delivered by the
+  `appstore-feedback-webhook` Supabase Edge Function. It verifies Apple's HMAC
+  signature, then uses Resend to alert `beta@withvillage.app` with a link back
+  to the feedback in App Store Connect.
+- When asked to triage tester feedback, search that Gmail label, group duplicate
+  reports, capture reproduction details, and inspect the relevant app code before
+  proposing or implementing fixes.

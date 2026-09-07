@@ -1,0 +1,28 @@
+# EAS uses this file instead of .gitignore when preparing cloud builds.
+node_modules/
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+.metro-health-check*
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+.DS_Store
+*.pem
+.env
+.env*.local
+*.tsbuildinfo
+/ios
+/android
+supabase/.temp/
+
+# Local launch-film source and rendered media are not part of the app bundle.
+marketing/

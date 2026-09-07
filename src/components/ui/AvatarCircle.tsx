@@ -1,3 +1,4 @@
+import { Image } from 'expo-image';
 import { Pressable, Text, View, type ViewStyle } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { avatarTones, fonts, type AvatarTone } from '@/lib/constants';
@@ -7,6 +8,7 @@ type AvatarCircleProps = {
   tone?: AvatarTone;
   size?: number;
   ring?: string;
+  imageUrl?: string | null;
   /** When provided, the avatar becomes pressable with selection haptic. */
   onPress?: () => void;
   style?: ViewStyle;
@@ -24,6 +26,7 @@ export function AvatarCircle({
   tone = 'peach',
   size = 40,
   ring,
+  imageUrl,
   onPress,
   style,
 }: AvatarCircleProps) {
@@ -53,26 +56,16 @@ export function AvatarCircle({
         style,
       ]}
     >
-      <View
-        style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: light,
-          opacity: 0.7,
-        }}
-      />
-      <Text
-        style={{
-          fontFamily: fonts.sansBold,
-          fontSize: size * 0.34,
-          color: 'rgba(0,0,0,0.55)',
-        }}
-      >
-        {initials}
-      </Text>
+      {imageUrl ? (
+        <Image source={{ uri: imageUrl }} contentFit="cover" style={{ width: '100%', height: '100%' }} />
+      ) : (
+        <>
+          <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: light, opacity: 0.7 }} />
+          <Text style={{ fontFamily: fonts.sansBold, fontSize: size * 0.34, color: 'rgba(0,0,0,0.55)' }}>
+            {initials}
+          </Text>
+        </>
+      )}
     </View>
   );
 

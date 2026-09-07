@@ -18,6 +18,22 @@ export type Venue = {
   lng: number;
   geofence_radius_m: number;
   venue_type: VenueType;
+  default_hangout: boolean;
+  google_place_id: string | null;
+  image_url: string | null;
+  image_source: 'wikimedia' | 'openverse' | 'venue_upload' | null;
+  image_attribution: string | null;
+  image_attribution_url: string | null;
+};
+
+export type HangoutSpot = {
+  id: UUID | null;
+  parent_id: UUID | null;
+  venue: Venue;
+  enabled: boolean;
+  is_default: boolean;
+  is_mine: boolean;
+  suggested_by: string[];
 };
 
 export type LocationShareMode = 'none' | '30min' | 'until_leave';
@@ -29,4 +45,5 @@ export type ParentLocation = {
   visible: boolean;
   last_seen_at: Timestamp;
   expires_at: Timestamp | null;
+  auto_share_at: Timestamp | null;
 };

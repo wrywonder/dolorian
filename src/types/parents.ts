@@ -1,6 +1,7 @@
 import type { AvatarColor, Timestamp, UUID } from './common';
 
 export type CalendarProvider = 'apple' | 'google';
+export type VisibilityMode = 'on' | 'auto' | 'disabled';
 
 export type Parent = {
   id: UUID;
@@ -9,7 +10,11 @@ export type Parent = {
   neighborhood: string | null;
   avatar_color: AvatarColor;
   avatar_initials: string;
-  phone_e164: string | null;
+  avatar_url: string | null;
+  bio: string | null;
+  profile_background: AvatarColor;
+  profile_background_url: string | null;
+  visibility_mode: VisibilityMode;
   calendar_connected_at: Timestamp | null;
   calendar_provider: CalendarProvider | null;
   created_at: Timestamp;

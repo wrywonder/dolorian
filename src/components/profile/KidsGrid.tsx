@@ -1,4 +1,5 @@
 import { Text, View } from 'react-native';
+import { Image } from 'expo-image';
 import { colors, fonts, type AvatarTone } from '@/lib/constants';
 import { PhotoTile } from '@/components/ui';
 import { ageInYears } from '@/lib/format';
@@ -48,7 +49,18 @@ export function KidsGrid({ kids }: KidsGridProps) {
               transform: [{ rotate: `${rotation}deg` }],
             }}
           >
-            <PhotoTile tone={tone} height={90} label={kid.name.toLowerCase()} radius={2} />
+            {kid.avatar_url ? (
+              <Image
+                source={{ uri: kid.avatar_url }}
+                contentFit="cover"
+                transition={180}
+                cachePolicy="memory-disk"
+                style={{ width: '100%', height: 90, borderRadius: 2 }}
+                accessibilityLabel={`Photo of ${kid.name}`}
+              />
+            ) : (
+              <PhotoTile tone={tone} height={90} label={kid.name.toLowerCase()} radius={2} />
+            )}
             <View
               style={{
                 marginTop: 8,

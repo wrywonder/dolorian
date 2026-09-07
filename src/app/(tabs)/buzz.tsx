@@ -25,6 +25,7 @@ type RowKind =
 
 export default function BuzzScreen() {
   const visible = useVisibilityStore((s) => s.visible);
+  const mode = useVisibilityStore((s) => s.mode);
   const toggle = useVisibilityStore((s) => s.toggle);
 
   const [loading, setLoading] = useState(true);
@@ -95,11 +96,13 @@ export default function BuzzScreen() {
         right={
           <VisibilityChip
             visible={visible}
+            mode={mode}
             visibleParents={
               visible
                 ? visibleConnections.slice(0, 3).map((p) => ({
                     initials: '',
                     tone: p.avatar_color as AvatarTone,
+                    imageUrl: p.avatar_url,
                   }))
                 : []
             }

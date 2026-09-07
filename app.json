@@ -1,29 +1,32 @@
 {
   "expo": {
-    "name": "Dolorian",
+    "name": "Village",
     "slug": "dolorian",
     "scheme": "dolorian",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/icon-village.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/icon-village.png",
       "resizeMode": "contain",
       "backgroundColor": "#FBF4E9"
     },
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.dolorian.app",
-      "deploymentTarget": "17.0",
+      "associatedDomains": [
+        "applinks:withvillage.app"
+      ],
+      "usesAppleSignIn": true,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/icon-village.png",
         "backgroundColor": "#FBF4E9"
       },
       "edgeToEdgeEnabled": true,
@@ -31,19 +34,25 @@
       "package": "com.dolorian.app"
     },
     "web": {
-      "favicon": "./assets/favicon.png",
+      "favicon": "./assets/icon-village.png",
       "bundler": "metro"
     },
     "plugins": [
       "expo-router",
       "expo-splash-screen",
       "expo-font",
+      "expo-apple-authentication",
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Dolorian uses your location to pin new spots and show your village what's nearby."
+          "locationWhenInUsePermission": "Village uses your location to show nearby hangout spots and your village on the map.",
+          "locationAlwaysAndWhenInUsePermission": "Village uses your location in the background to recognize your hangout spots and warn you before sharing that you're out and about.",
+          "isIosBackgroundLocationEnabled": true,
+          "isAndroidBackgroundLocationEnabled": true
         }
-      ]
+      ],
+      "expo-notifications",
+      "@react-native-community/datetimepicker"
     ],
     "experiments": {
       "typedRoutes": true,

@@ -1,21 +1,23 @@
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { colors, fonts, type AvatarTone } from '@/lib/constants';
-import { FadeOverlay, HandArrow, PhotoTile } from '@/components/ui';
+import { FadeOverlay, HandArrow, VenuePhoto } from '@/components/ui';
 import type { Venue } from '@/types';
 
 type WarmingUpStripProps = {
+  title?: string;
   items: { venue: Venue; count: number }[];
-  /** Tapping a tile checks the user in at that venue. */
+  /** Optional tile action, used to add a friend-recommended hangout. */
   onPressVenue?: (venue: Venue) => void;
 };
 
 /**
- * Horizontal photo-tile rail of venues with connected-parent activity.
+ * Horizontal photo-tile rail of hangouts with connected-parent activity.
  * Each tile fades to dark at the bottom so the emoji + name + count
  * read clearly. Three tiles fit roughly across an iPhone width.
  */
-export function WarmingUpStrip({ items, onPressVenue }: WarmingUpStripProps) {
+export function WarmingUpStrip({ title = 'warming up', items, onPressVenue }: WarmingUpStripProps) {
+  if (items.length === 0) return null;
   return (
     <View style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 }}>
@@ -27,7 +29,7 @@ export function WarmingUpStrip({ items, onPressVenue }: WarmingUpStripProps) {
             lineHeight: 20,
           }}
         >
-          warming up
+          {title}
         </Text>
         <HandArrow size={36} color={colors.terracotta} />
       </View>
@@ -58,7 +60,7 @@ export function WarmingUpStrip({ items, onPressVenue }: WarmingUpStripProps) {
               position: 'relative',
             }}
           >
-            <PhotoTile tone={toneForVenue(c.venue)} height={86} radius={0} />
+            <VenuePhoto venue={c.venue} fallbackTone={toneForVenue(c.venue)} height={86} radius={0} />
             <FadeOverlay direction="bottom" intensity={0.65} transparentUntil={0} />
             <View
               style={{

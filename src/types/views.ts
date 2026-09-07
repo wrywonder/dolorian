@@ -3,8 +3,8 @@
  * Screens import these instead of the raw rows when they need related data.
  */
 
-import type { Activity, InteractionState } from './activities';
-import type { ConnectionStatus } from './connections';
+import type { Activity, InteractionState, PlanParticipant } from './activities';
+import type { Connection, ConnectionPreference, ConnectionStatus } from './connections';
 import type { Kid } from './kids';
 import type { Parent } from './parents';
 import type { Post, PostComment } from './posts';
@@ -33,11 +33,15 @@ export type ActivitySocialProof = {
   activity: Activity;
   venue: Venue | null;
   /** Connected parents who are 'interested'. Excludes the current user. */
-  interestedConnections: Parent[];
+  interestedConnections: PlanParticipant[];
   /** Connected parents who are 'going'. Excludes the current user. */
-  goingConnections: Parent[];
+  goingConnections: PlanParticipant[];
+  /** Parents who have said they cannot make this plan. Excludes the viewer. */
+  outConnections: PlanParticipant[];
   /** Current user's own state for this activity, if any. */
   myState: InteractionState | null;
+  /** Optional family-specific attendance details, separate from the plan. */
+  myRsvpNote: string | null;
 };
 
 export type NearbyParent = {
@@ -57,6 +61,14 @@ export type ProfileView = {
   mutualFriendCount: number;
   /** Activity chips — venue names from activities they've engaged with. */
   activityChips: string[];
+};
+
+export type ConnectionView = {
+  connection: Connection;
+  parent: Parent;
+  incoming: boolean;
+  outgoing: boolean;
+  preference: ConnectionPreference;
 };
 
 export type ResolvedPrompt<T extends PromptType = PromptType> = {

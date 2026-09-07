@@ -43,6 +43,7 @@ export function QuestionPostCard({ item }: QuestionPostCardProps) {
           <AvatarCircle
             initials={author.avatar_initials}
             tone={author.avatar_color}
+            imageUrl={author.avatar_url}
             size={28}
             onPress={() => openProfile(author.id)}
           />

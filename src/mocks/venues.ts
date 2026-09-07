@@ -10,6 +10,12 @@ export const mockVenues: Venue[] = [
     lng: -122.3094,
     geofence_radius_m: 120,
     venue_type: 'park',
+    default_hangout: false,
+    google_place_id: null,
+    image_url: null,
+    image_source: null,
+    image_attribution: null,
+    image_attribution_url: null,
   },
   {
     id: VENUE_IDS.studio_growlies,
@@ -19,6 +25,12 @@ export const mockVenues: Venue[] = [
     lng: -122.2728,
     geofence_radius_m: 50,
     venue_type: 'studio',
+    default_hangout: false,
+    google_place_id: null,
+    image_url: null,
+    image_source: null,
+    image_attribution: null,
+    image_attribution_url: null,
   },
   {
     id: VENUE_IDS.albany_aquatic,
@@ -28,6 +40,12 @@ export const mockVenues: Venue[] = [
     lng: -122.2953,
     geofence_radius_m: 60,
     venue_type: 'swim',
+    default_hangout: false,
+    google_place_id: null,
+    image_url: null,
+    image_source: null,
+    image_attribution: null,
+    image_attribution_url: null,
   },
   {
     id: VENUE_IDS.tilden_park,
@@ -37,6 +55,12 @@ export const mockVenues: Venue[] = [
     lng: -122.2453,
     geofence_radius_m: 200,
     venue_type: 'park',
+    default_hangout: false,
+    google_place_id: null,
+    image_url: null,
+    image_source: null,
+    image_attribution: null,
+    image_attribution_url: null,
   },
 ];
 
@@ -53,6 +77,7 @@ export const mockParentLocations: ParentLocation[] = [
     visible: true,
     last_seen_at: '2026-05-24T10:48:00Z',
     expires_at: '2026-05-24T12:48:00Z',
+    auto_share_at: null,
   },
   {
     id: LOCATION_IDS.priya_at_studio,
@@ -61,6 +86,7 @@ export const mockParentLocations: ParentLocation[] = [
     visible: true,
     last_seen_at: '2026-05-24T10:35:00Z',
     expires_at: '2026-05-24T11:30:00Z',
+    auto_share_at: null,
   },
   {
     id: LOCATION_IDS.sam_at_studio,
@@ -69,6 +95,7 @@ export const mockParentLocations: ParentLocation[] = [
     visible: true,
     last_seen_at: '2026-05-24T10:36:00Z',
     expires_at: '2026-05-24T11:30:00Z',
+    auto_share_at: null,
   },
   {
     id: LOCATION_IDS.drew_at_tilden,
@@ -77,5 +104,6 @@ export const mockParentLocations: ParentLocation[] = [
     visible: true,
     last_seen_at: '2026-05-24T10:55:00Z',
     expires_at: '2026-05-24T12:55:00Z',
+    auto_share_at: null,
   },
 ];

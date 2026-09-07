@@ -1,6 +1,18 @@
 import type { Activity, ActivityInteraction } from '@/types';
 import { ACTIVITY_IDS, PARENT_IDS, VENUE_IDS } from './ids';
 
+const planDefaults = {
+  visibility: 'public' as const,
+  location_name: null,
+  location_address: null,
+  external_url: null,
+  external_source_key: null,
+  cover_image_url: null,
+  all_day: false,
+  updated_at: '2026-04-25T00:00:00Z',
+  cancelled_at: null,
+};
+
 /**
  * 6 activities matching the spec's source-distribution:
  *  • 3 admin (Saturday Soccer, Wildcat Hike, 10:30 Ballet)
@@ -10,6 +22,7 @@ import { ACTIVITY_IDS, PARENT_IDS, VENUE_IDS } from './ids';
  */
 export const mockActivities: Activity[] = [
   {
+    ...planDefaults,
     id: ACTIVITY_IDS.saturday_soccer,
     name: 'Saturday Soccer',
     emoji: '⚽',
@@ -25,6 +38,7 @@ export const mockActivities: Activity[] = [
     created_at: '2026-04-25T00:00:00Z',
   },
   {
+    ...planDefaults,
     id: ACTIVITY_IDS.wildcat_hike,
     name: 'Wildcat Hike',
     emoji: '🥾',
@@ -40,6 +54,7 @@ export const mockActivities: Activity[] = [
     created_at: '2026-04-25T00:00:00Z',
   },
   {
+    ...planDefaults,
     id: ACTIVITY_IDS.ten_thirty_ballet,
     name: '10:30 Ballet',
     emoji: '🩰',
@@ -55,6 +70,7 @@ export const mockActivities: Activity[] = [
     created_at: '2026-04-25T00:00:00Z',
   },
   {
+    ...planDefaults,
     id: ACTIVITY_IDS.storytime,
     name: 'Saturday Storytime',
     emoji: '📚',
@@ -73,6 +89,7 @@ export const mockActivities: Activity[] = [
     created_at: '2026-05-20T03:14:00Z',
   },
   {
+    ...planDefaults,
     id: ACTIVITY_IDS.spring_concert,
     name: "Sasha's Spring Concert",
     emoji: '🎶',
@@ -91,6 +108,7 @@ export const mockActivities: Activity[] = [
     created_at: '2026-05-18T08:00:00Z',
   },
   {
+    ...planDefaults,
     id: ACTIVITY_IDS.birthday_playdate,
     name: "Sasha's Birthday Playdate",
     emoji: '🎂',

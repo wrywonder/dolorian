@@ -1,7 +1,9 @@
 import { Pressable, Text, View } from 'react-native';
+import { Image } from 'expo-image';
 import { colors, fonts, type AvatarTone } from '@/lib/constants';
 import { FadeOverlay, PhotoTile, TimeStampPill } from '@/components/ui';
 import { dayShort, timeShort } from '@/lib/format';
+import { planStateLabel } from '@/lib/plan-rsvp-copy';
 import { presentInterestSheet } from './InterestSheet';
 import { SocialProofRow } from './SocialProofRow';
 import type { ActivitySocialProof, InteractionState } from '@/types';
@@ -11,6 +13,7 @@ type ActivityCardProps = {
   /** Rotation degrees for the polaroid wobble. */
   rotation?: number;
   onStateChanged?: (next: InteractionState | null) => void;
+  onOpen?: () => void;
 };
 
 /**
@@ -21,11 +24,14 @@ type ActivityCardProps = {
  * An emoji sticker floats over the top-right corner, overflowing the
  * card. The whole card sits at a slight rotation per the design.
  */
-export function ActivityCard({ proof, rotation = 0, onStateChanged }: ActivityCardProps) {
-  const { activity, venue, goingConnections, interestedConnections, myState } = proof;
+export function ActivityCard({ proof, rotation = 0, onStateChanged, onOpen }: ActivityCardProps) {
+  const { activity, venue, goingConnections, interestedConnections, outConnections, myState } = proof;
   const tone = toneForActivity(activity.emoji);
+  const imageUrl = activity.cover_image_url ?? venue?.image_url ?? null;
+  const location = activity.location_name ?? venue?.name ?? null;
+  const hasExternalListing = Boolean(activity.external_url);
 
-  const buttonLabel = labelForState(myState);
+  const buttonLabel = activity.cancelled_at ? 'Cancelled' : planStateLabel(myState, hasExternalListing);
 
   return (
     <View style={{ position: 'relative', marginBottom: 26 }}>
@@ -45,13 +51,25 @@ export function ActivityCard({ proof, rotation = 0, onStateChanged }: ActivityCa
         }}
       >
         {/* HEADER */}
-        <View style={{ position: 'relative' }}>
-          <PhotoTile
-            tone={tone}
-            height={210}
-            label={activity.name.toUpperCase()}
-          />
+        <Pressable accessibilityRole="button" accessibilityLabel={`Open ${activity.name}`} onPress={onOpen} style={{ position: 'relative' }}>
+          {imageUrl ? (
+            <Image source={{ uri: imageUrl }} contentFit="cover" transition={180} style={{ width: '100%', height: 210 }} />
+          ) : (
+            <PhotoTile tone={tone} height={210} label={activity.name.toUpperCase()} />
+          )}
           <FadeOverlay direction="bottom" intensity={0.7} transparentUntil={0.25} />
+          <View style={{ position: 'absolute', top: 12, left: 12, flexDirection: 'row', gap: 6 }}>
+            <View style={{ backgroundColor: 'rgba(255,253,246,0.92)', paddingHorizontal: 9, paddingVertical: 5, borderRadius: 999 }}>
+              <Text style={{ fontFamily: fonts.monoBold, fontSize: 9, color: colors.dark, letterSpacing: 0.4 }}>
+                {visibilityLabel(activity.visibility)}
+              </Text>
+            </View>
+            {activity.cancelled_at ? (
+              <View style={{ backgroundColor: colors.terracotta, paddingHorizontal: 9, paddingVertical: 5, borderRadius: 999 }}>
+                <Text style={{ fontFamily: fonts.monoBold, fontSize: 9, color: colors.white, letterSpacing: 0.4 }}>CANCELLED</Text>
+              </View>
+            ) : null}
+          </View>
           <View
             style={{
               position: 'absolute',
@@ -100,9 +118,9 @@ export function ActivityCard({ proof, rotation = 0, onStateChanged }: ActivityCa
             >
               {activity.name}
             </Text>
-            {(venue || activity.description) ? (
+            {(location || activity.description) ? (
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 4 }}>
-                {venue ? (
+                {location ? (
                   <Text
                     style={{
                       fontFamily: fonts.sansSemi,
@@ -110,7 +128,7 @@ export function ActivityCard({ proof, rotation = 0, onStateChanged }: ActivityCa
                       color: 'rgba(255,255,255,0.92)',
                     }}
                   >
-                    {venue.name}
+                    {location}
                     {activity.description ? ' · ' : ''}
                   </Text>
                 ) : null}
@@ -128,7 +146,7 @@ export function ActivityCard({ proof, rotation = 0, onStateChanged }: ActivityCa
               </View>
             ) : null}
           </View>
-        </View>
+        </Pressable>
 
         {/* FOOTER */}
         <View
@@ -144,14 +162,18 @@ export function ActivityCard({ proof, rotation = 0, onStateChanged }: ActivityCa
           <SocialProofRow
             goingConnections={goingConnections}
             interestedConnections={interestedConnections}
+            outConnections={outConnections}
+            hasExternalListing={hasExternalListing}
           />
           <Pressable
+            disabled={Boolean(activity.cancelled_at)}
             onPress={() =>
               presentInterestSheet({
                 activityId: activity.id,
                 activityName: activity.name,
                 emoji: activity.emoji,
                 currentState: myState,
+                hasExternalListing,
                 onChanged: (next) => onStateChanged?.(next),
               })
             }
@@ -165,6 +187,7 @@ export function ActivityCard({ proof, rotation = 0, onStateChanged }: ActivityCa
               shadowOffset: { width: 0, height: 2 },
               shadowRadius: 0,
               elevation: 3,
+              opacity: activity.cancelled_at ? 0.55 : 1,
             }}
           >
             <Text
@@ -207,16 +230,10 @@ export function ActivityCard({ proof, rotation = 0, onStateChanged }: ActivityCa
   );
 }
 
-function labelForState(state: InteractionState | null): string {
-  switch (state) {
-    case 'going':
-    case 'attended':
-      return 'Going ✓';
-    case 'interested':
-      return 'Interested';
-    default:
-      return "I'm in →";
-  }
+function visibilityLabel(visibility: ActivitySocialProof['activity']['visibility']): string {
+  if (visibility === 'connections') return 'MY VILLAGE';
+  if (visibility === 'invited') return 'INVITED ONLY';
+  return 'PUBLIC';
 }
 
 function toneForActivity(emoji: string | null): AvatarTone {

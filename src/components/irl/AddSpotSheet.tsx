@@ -19,7 +19,7 @@ import type { Venue } from '@/types';
 type AddSpotSheetProps = {
   open: boolean;
   onClose: () => void;
-  /** Called after the venue is created and the user is checked in there. */
+  /** Called after the venue is created and added to this parent's hangouts. */
   onCreated: (venue: Venue) => void;
 };
 
@@ -37,10 +37,8 @@ const TYPE_CHOICES: { key: Venue['venue_type']; label: string }[] = [
 ];
 
 /**
- * Bottom sheet for pinning a new spot at the user's current location.
- * Creates the venue (public directory) and checks the creator in, so
- * the spot immediately shows on their map and in "warming up" — where
- * connections can tap it to opt in themselves.
+ * Adds a named hangout at the user's current position. Creating a hangout
+ * never shares presence by itself; geofencing handles that on a later visit.
  */
 export function AddSpotSheet({ open, onClose, onCreated }: AddSpotSheetProps) {
   const [name, setName] = useState('');
@@ -66,7 +64,7 @@ export function AddSpotSheet({ open, onClose, onCreated }: AddSpotSheetProps) {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
-        setError('location access is needed to pin the spot where you are');
+        setError('location access is needed to save the hangout where you are');
         return;
       }
       const pos = await Location.getCurrentPositionAsync({
@@ -79,7 +77,7 @@ export function AddSpotSheet({ open, onClose, onCreated }: AddSpotSheetProps) {
         lat: pos.coords.latitude,
         lng: pos.coords.longitude,
       });
-      await data.checkInAtVenue(venue.id);
+      await data.setHangoutSpot(venue.id, true);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       reset();
       onCreated(venue);
@@ -119,7 +117,7 @@ export function AddSpotSheet({ open, onClose, onCreated }: AddSpotSheetProps) {
               marginBottom: 4,
             }}
           >
-            PIN IT WHERE YOU'RE STANDING
+            SAVE WHERE YOU'RE STANDING
           </Text>
           <Text
             style={{
@@ -130,7 +128,7 @@ export function AddSpotSheet({ open, onClose, onCreated }: AddSpotSheetProps) {
               marginBottom: 18,
             }}
           >
-            add a spot
+            add a hangout spot
           </Text>
 
           <TextInput
@@ -216,7 +214,7 @@ export function AddSpotSheet({ open, onClose, onCreated }: AddSpotSheetProps) {
           {saving ? (
             <ActivityIndicator color={colors.terracotta} />
           ) : (
-            <TerracottaButton label="pin it 📍" onPress={save} />
+            <TerracottaButton label="save hangout →" onPress={save} />
           )}
         </View>
       </KeyboardAvoidingView>

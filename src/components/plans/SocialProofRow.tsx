@@ -2,23 +2,24 @@ import { Text, View } from 'react-native';
 import { colors, fonts } from '@/lib/constants';
 import { AvatarCircle } from '@/components/ui';
 import { useProfileLink } from '@/hooks/useProfileLink';
-import type { Parent } from '@/types';
+import type { PlanParticipant } from '@/types';
 
 type SocialProofProps = {
-  goingConnections: Parent[];
-  interestedConnections: Parent[];
+  goingConnections: PlanParticipant[];
+  interestedConnections: PlanParticipant[];
+  outConnections?: PlanParticipant[];
+  hasExternalListing?: boolean;
 };
 
 /**
- * Two visually distinct stacks — "going" is bolder/heavier, "interested"
- * sits below in a lighter weight. When only one state is present we
- * collapse to a single row that visually matches the original design.
+ * Compact participant stacks for going, interested, and out responses.
  */
-export function SocialProofRow({ goingConnections, interestedConnections }: SocialProofProps) {
+export function SocialProofRow({ goingConnections, interestedConnections, outConnections = [], hasExternalListing = false }: SocialProofProps) {
   const hasGoing = goingConnections.length > 0;
   const hasInterest = interestedConnections.length > 0;
+  const hasOut = outConnections.length > 0;
 
-  if (!hasGoing && !hasInterest) {
+  if (!hasGoing && !hasInterest && !hasOut) {
     return (
       <Text
         style={{
@@ -33,48 +34,17 @@ export function SocialProofRow({ goingConnections, interestedConnections }: Soci
     );
   }
 
-  // Single-state — match the original design's compact row exactly.
-  if (hasGoing && !hasInterest) {
-    return (
-      <SingleStack
-        parents={goingConnections}
-        label="going"
-        accent={colors.sage}
-        bold
-      />
-    );
-  }
-  if (hasInterest && !hasGoing) {
-    return (
-      <SingleStack
-        parents={interestedConnections}
-        label="interested"
-        accent={colors.taupe}
-      />
-    );
-  }
-
-  // Both present — stack vertically, going row first, lighter row below.
   return (
     <View style={{ flex: 1, gap: 6 }}>
-      <SingleStack
-        parents={goingConnections}
-        label="going"
-        accent={colors.sage}
-        bold
-      />
-      <SingleStack
-        parents={interestedConnections}
-        label="interested"
-        accent={colors.taupe}
-        compact
-      />
+      {hasGoing ? <SingleStack parents={goingConnections} label={hasExternalListing ? 'signed up' : 'going'} accent={colors.sage} bold /> : null}
+      {hasInterest ? <SingleStack parents={interestedConnections} label={hasExternalListing ? 'considering it' : 'interested'} accent={colors.taupe} compact={hasGoing} /> : null}
+      {hasOut ? <SingleStack parents={outConnections} label={hasExternalListing ? 'not this time' : 'can’t make it'} accent={colors.terracotta} compact /> : null}
     </View>
   );
 }
 
 type SingleStackProps = {
-  parents: Parent[];
+  parents: PlanParticipant[];
   label: string;
   accent: string;
   bold?: boolean;
@@ -92,11 +62,12 @@ function SingleStack({ parents, label, accent, bold = false, compact = false }: 
       <View style={{ flexDirection: 'row' }}>
         {stack.map((p, i) => (
           <AvatarCircle
-            key={p.id}
-            initials=""
+            key={p.parent_id}
+            initials={p.avatar_initials}
             tone={p.avatar_color}
+            imageUrl={p.avatar_url}
             size={size}
-            onPress={() => openProfile(p.id)}
+            onPress={p.profile_visible ? () => openProfile(p.parent_id) : undefined}
             style={{
               marginLeft: i ? overlap : 0,
               borderWidth: 2.5,
@@ -121,9 +92,9 @@ function SingleStack({ parents, label, accent, bold = false, compact = false }: 
             color: accent,
           }}
         >
-          {parents.length} fam{parents.length === 1 ? '' : 's'}
+          {parents.length} {parents.length === 1 ? 'family' : 'families'}
         </Text>{' '}
-        you know are {label}
+        {label}
       </Text>
     </View>
   );

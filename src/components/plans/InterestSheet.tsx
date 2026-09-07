@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import {
   Modal,
   Pressable,
@@ -13,8 +13,10 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
+import { router } from 'expo-router';
 import { colors, fonts } from '@/lib/constants';
 import { data } from '@/lib/data';
+import { planRsvpCopy } from '@/lib/plan-rsvp-copy';
 import { Icon, TwinkleSparkle } from '@/components/ui';
 import { useInterestSheet } from '@/store/interestSheet';
 import type { InteractionState } from '@/types';
@@ -30,12 +32,15 @@ export function InterestSheetHost() {
   const payload = useInterestSheet((s) => s.payload);
   const dismiss = useInterestSheet((s) => s.dismiss);
   const { height } = useWindowDimensions();
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const translateY = useSharedValue(height);
   const backdropOpacity = useSharedValue(0);
 
   useEffect(() => {
     if (payload) {
+      setError(null);
       translateY.value = withTiming(0, { duration: 280, easing: Easing.out(Easing.cubic) });
       backdropOpacity.value = withTiming(1, { duration: 200 });
     } else {
@@ -52,16 +57,29 @@ export function InterestSheetHost() {
   }));
 
   if (!payload) return null;
+  const copy = planRsvpCopy(payload.hasExternalListing);
 
   const handlePick = async (next: InteractionState | null) => {
+    if (saving) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-    if (next === null) {
-      await data.updateActivityInteraction(payload.activityId, 'skipped');
-    } else {
-      await data.updateActivityInteraction(payload.activityId, next);
+    setSaving(true);
+    setError(null);
+    try {
+      if (next === null) {
+        await data.clearPlanRsvp(payload.activityId);
+      } else {
+        await data.setPlanRsvp(payload.activityId, next as 'interested' | 'going' | 'out');
+      }
+      payload.onChanged(next);
+      dismiss();
+      if (payload.hasExternalListing && next === 'going') {
+        router.push(`/plan/${payload.activityId}` as never);
+      }
+    } catch {
+      setError('Could not update your response. Please try again.');
+    } finally {
+      setSaving(false);
     }
-    payload.onChanged(next);
-    dismiss();
   };
 
   return (
@@ -128,7 +146,7 @@ export function InterestSheetHost() {
                 letterSpacing: 0.6,
               }}
             >
-              WHAT'S YOUR MOVE?
+              {payload.hasExternalListing ? 'REGISTRATION STATUS' : "WHAT'S YOUR MOVE?"}
             </Text>
             <Text
               style={{
@@ -147,26 +165,43 @@ export function InterestSheetHost() {
 
         <View style={{ gap: 10, marginTop: 16 }}>
           <SheetButton
-            label="I'm going"
+            label={payload.hasExternalListing ? "We're signed up" : "I'm going"}
             tint="terracotta"
             iconLeft={<Icon name="wave" size={20} color={colors.white} weight={2.4} />}
             selected={payload.currentState === 'going' || payload.currentState === 'attended'}
+            disabled={saving}
             onPress={() => handlePick('going')}
           />
+          {payload.hasExternalListing ? (
+            <Text style={{ fontFamily: fonts.sans, fontSize: 11.5, lineHeight: 17, color: colors.taupe, textAlign: 'center', paddingHorizontal: 12 }}>
+              Signed up opens the plan so you can add child, days, times, or group details.
+            </Text>
+          ) : null}
           <SheetButton
-            label="Interested"
+            label={copy.interested}
             tint="sage"
             iconLeft={<Icon name="sparkle" size={18} color={colors.sage} weight={2} />}
             selected={payload.currentState === 'interested'}
+            disabled={saving}
             onPress={() => handlePick('interested')}
+          />
+          <SheetButton
+            label={copy.out}
+            tint="ghost"
+            iconLeft={<Icon name="x" size={17} color={colors.taupe} weight={2} />}
+            selected={payload.currentState === 'out'}
+            disabled={saving}
+            onPress={() => handlePick('out')}
           />
           {payload.currentState && payload.currentState !== 'skipped' ? (
             <SheetButton
               label="Remove"
               tint="ghost"
+              disabled={saving}
               onPress={() => handlePick(null)}
             />
           ) : null}
+          {error ? <Text style={{ fontFamily: fonts.sansSemi, fontSize: 12, lineHeight: 18, color: colors.terracotta }}>{error}</Text> : null}
         </View>
 
         <Pressable
@@ -191,17 +226,19 @@ export function InterestSheetHost() {
 type SheetButtonProps = {
   label: string;
   tint: 'terracotta' | 'sage' | 'ghost';
-  iconLeft?: React.ReactNode;
+  iconLeft?: ReactNode;
   selected?: boolean;
+  disabled?: boolean;
   onPress: () => void;
 };
 
-function SheetButton({ label, tint, iconLeft, selected, onPress }: SheetButtonProps) {
+function SheetButton({ label, tint, iconLeft, selected, disabled, onPress }: SheetButtonProps) {
   const isTerracotta = tint === 'terracotta';
   const isSage = tint === 'sage';
 
   return (
     <Pressable
+      disabled={disabled}
       onPress={onPress}
       style={{
         height: 52,
@@ -218,7 +255,7 @@ function SheetButton({ label, tint, iconLeft, selected, onPress }: SheetButtonPr
         shadowOffset: { width: 0, height: 3 },
         shadowRadius: 0,
         elevation: isTerracotta ? 4 : 0,
-        opacity: selected ? 0.85 : 1,
+        opacity: disabled ? 0.55 : selected ? 0.85 : 1,
       }}
     >
       {iconLeft}
@@ -243,6 +280,7 @@ export function presentInterestSheet(args: {
   activityId: string;
   activityName: string;
   emoji: string | null;
+  hasExternalListing: boolean;
   currentState: InteractionState | null;
   onChanged: (state: InteractionState | null) => void;
 }) {

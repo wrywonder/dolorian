@@ -18,8 +18,10 @@ export type IconName =
   | 'chevron.right' | 'chevron.down' | 'x'
   | 'lock' | 'eye.slash' | 'check.circle'
   | 'camera' | 'phone' | 'search'
-  | 'arrow.right' | 'arrow.up' | 'paper.plane'
-  | 'wave' | 'sun' | 'gear' | 'bell';
+  | 'ellipsis' | 'person.2' | 'qrcode' | 'shield'
+  | 'star' | 'star.fill'
+  | 'arrow.right' | 'arrow.up' | 'paper.plane' | 'pencil' | 'link'
+  | 'wave' | 'sun' | 'gear' | 'bell' | 'info';
 
 type IconProps = {
   name: IconName;
@@ -165,6 +167,13 @@ export function Icon({ name, size = 24, color = '#2D241B', weight = 1.8 }: IconP
           <Path d="M6 6l12 12M18 6L6 18" {...stroke} />
         </Svg>
       );
+    case 'pencil':
+      return (
+        <Svg {...dim} viewBox="0 0 24 24">
+          <Path d="M4.5 19.5l4.1-1 9.6-9.6a2.1 2.1 0 0 0-3-3l-9.6 9.6-1.1 4Z" {...stroke} />
+          <Path d="M13.8 7.3l2.9 2.9" {...stroke} />
+        </Svg>
+      );
     case 'lock':
       return (
         <Svg {...dim} viewBox="0 0 24 24">
@@ -186,6 +195,13 @@ export function Icon({ name, size = 24, color = '#2D241B', weight = 1.8 }: IconP
         <Svg {...dim} viewBox="0 0 24 24">
           <Circle cx={12} cy={12} r={9} {...stroke} />
           <Path d="M8 12.5l2.5 2.5L16 9.5" {...stroke} />
+        </Svg>
+      );
+    case 'info':
+      return (
+        <Svg {...dim} viewBox="0 0 24 24">
+          <Circle cx={12} cy={12} r={9} {...stroke} />
+          <Path d="M12 10.5V17M12 7.2h.01" {...stroke} strokeWidth={2.1} />
         </Svg>
       );
     case 'camera':
@@ -232,6 +248,12 @@ export function Icon({ name, size = 24, color = '#2D241B', weight = 1.8 }: IconP
           <Path d="M21 3L3 11l7 2 2 7 9-17Z" {...stroke} />
         </Svg>
       );
+    case 'link':
+      return (
+        <Svg {...dim} viewBox="0 0 24 24">
+          <Path d="M9.5 14.5l5-5M7.8 17.7l-1.5 1.5a3.5 3.5 0 0 1-5-5l3.2-3.2a3.5 3.5 0 0 1 5 0M16.2 6.3l1.5-1.5a3.5 3.5 0 0 1 5 5L19.5 13a3.5 3.5 0 0 1-5 0" {...stroke} />
+        </Svg>
+      );
     case 'wave':
       return (
         <Svg {...dim} viewBox="0 0 24 24">
@@ -262,6 +284,50 @@ export function Icon({ name, size = 24, color = '#2D241B', weight = 1.8 }: IconP
       return (
         <Svg {...dim} viewBox="0 0 24 24">
           <Path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4l2-2ZM10 20a2 2 0 0 0 4 0" {...stroke} />
+        </Svg>
+      );
+    case 'ellipsis':
+      return (
+        <Svg {...dim} viewBox="0 0 24 24">
+          <Circle cx={5} cy={12} r={1.6} fill={color} />
+          <Circle cx={12} cy={12} r={1.6} fill={color} />
+          <Circle cx={19} cy={12} r={1.6} fill={color} />
+        </Svg>
+      );
+    case 'person.2':
+      return (
+        <Svg {...dim} viewBox="0 0 24 24">
+          <Circle cx={9} cy={8} r={3} {...stroke} />
+          <Circle cx={17} cy={9} r={2.4} {...stroke} />
+          <Path d="M3.5 20c.8-3.5 3-5.3 5.5-5.3s4.7 1.8 5.5 5.3M14 15.5c2.7-.8 5.3.7 6.5 3.5" {...stroke} />
+        </Svg>
+      );
+    case 'qrcode':
+      return (
+        <Svg {...dim} viewBox="0 0 24 24">
+          <Rect x={3} y={3} width={7} height={7} rx={1} {...stroke} />
+          <Rect x={14} y={3} width={7} height={7} rx={1} {...stroke} />
+          <Rect x={3} y={14} width={7} height={7} rx={1} {...stroke} />
+          <Path d="M14 14h3v3h4M14 21v-3M18 14h3" {...stroke} />
+        </Svg>
+      );
+    case 'shield':
+      return (
+        <Svg {...dim} viewBox="0 0 24 24">
+          <Path d="M12 3l8 3v5c0 5.2-3.2 8.7-8 10-4.8-1.3-8-4.8-8-10V6l8-3Z" {...stroke} />
+          <Path d="M8.5 12l2.2 2.2 4.8-5" {...stroke} />
+        </Svg>
+      );
+    case 'star':
+      return (
+        <Svg {...dim} viewBox="0 0 24 24">
+          <Path d="M12 3l2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3Z" {...stroke} />
+        </Svg>
+      );
+    case 'star.fill':
+      return (
+        <Svg {...dim} viewBox="0 0 24 24">
+          <Path d="M12 3l2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3Z" fill={color} />
         </Svg>
       );
   }

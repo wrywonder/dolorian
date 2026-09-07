@@ -14,7 +14,7 @@ const missingVariables = [
  * screen instead of crashing during module evaluation.
  */
 export const supabaseConfigError = missingVariables.length
-  ? `Dolorian is missing ${missingVariables.join(' and ')}. Add them to .env for local development and to the selected EAS environment for builds.`
+  ? `Village is missing ${missingVariables.join(' and ')}. Add them to .env for local development and to the selected EAS environment for builds.`
   : null;
 
 // createClient requires a syntactically valid URL even when configuration is
