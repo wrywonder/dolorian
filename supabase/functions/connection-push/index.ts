@@ -142,4 +142,3 @@ Deno.serve(async (request: Request) => {
 
   return json({ delivered });
 });
-

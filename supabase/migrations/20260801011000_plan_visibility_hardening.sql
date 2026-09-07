@@ -128,4 +128,3 @@ returns public.activity_interactions
 drop function if exists public.can_view_plan(uuid, uuid);
 revoke all on function public.can_view_plan(uuid) from public, anon;
 grant execute on function public.can_view_plan(uuid) to authenticated;
-

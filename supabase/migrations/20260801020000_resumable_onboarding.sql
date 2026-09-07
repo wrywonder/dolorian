@@ -53,4 +53,3 @@ returns public.parents
 
 revoke all on function public.complete_onboarding(text, text, text, text) from public, anon;
 grant execute on function public.complete_onboarding(text, text, text, text) to authenticated;
-

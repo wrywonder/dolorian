@@ -31,4 +31,3 @@ export async function deliverVillagePushBestEffort(
     console.warn('remote notification delivery failed', cause);
   }
 }
-
