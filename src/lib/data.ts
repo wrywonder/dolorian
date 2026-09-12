@@ -11,6 +11,7 @@ import { createIdentityScopedLookup } from '@/lib/identity-scoped-lookup';
 import { deliverVillagePushBestEffort } from '@/lib/push-delivery';
 import { createPresenceQueue, hasActiveVisit, isPresenceVisible, startWarnedVisit, visitTimes, type MyPresence } from '@/lib/irl-presence';
 import { prepareCommentBody } from '@/lib/post-engagement';
+import { validatePlanSchedule } from '@/lib/plan-schedule';
 import type {
   Activity,
   ActivityInteraction,
@@ -36,6 +37,7 @@ import type {
   PlanInput,
   PlanLinkPreview,
   PlanParticipant,
+  PlanSharedBy,
   Post,
   PostComment,
   ProfileView,
@@ -286,12 +288,14 @@ async function getUpcomingActivities(): Promise<ActivitySocialProof[]> {
   const activityIds = activities.map((a: Record<string, unknown>) => a.id as string);
   if (activityIds.length === 0) return [];
 
-  const { data: interactions, error: participantError } = await supabase
-    .rpc('plan_participants', { p_plan_ids: activityIds });
+  const [{ data: interactions, error: participantError }, sharedBy] = await Promise.all([
+    supabase.rpc('plan_participants', { p_plan_ids: activityIds }),
+    getPlanSharers(activityIds),
+  ]);
   if (participantError) throw participantError;
 
   return activities.map((row: Record<string, unknown>) =>
-    buildSocialProof(row, (interactions ?? []) as PlanParticipant[], me),
+    buildSocialProof(row, (interactions ?? []) as PlanParticipant[], me, sharedBy.get(row.id as UUID)),
   );
 }
 
@@ -308,19 +312,28 @@ async function getDiscoveredActivityPreviews(): Promise<ActivitySocialProof[]> {
   const activityIds = activities.map((a: Record<string, unknown>) => a.id as string);
   if (activityIds.length === 0) return [];
 
-  const { data: interactions, error: participantError } = await supabase
-    .rpc('plan_participants', { p_plan_ids: activityIds });
+  const [{ data: interactions, error: participantError }, sharedBy] = await Promise.all([
+    supabase.rpc('plan_participants', { p_plan_ids: activityIds }),
+    getPlanSharers(activityIds),
+  ]);
   if (participantError) throw participantError;
 
   return activities.map((row: Record<string, unknown>) =>
-    buildSocialProof(row, (interactions ?? []) as PlanParticipant[], me),
+    buildSocialProof(row, (interactions ?? []) as PlanParticipant[], me, sharedBy.get(row.id as UUID)),
   );
+}
+
+async function getPlanSharers(planIds: UUID[]): Promise<Map<UUID, PlanSharedBy>> {
+  const { data: rows, error } = await supabase.rpc('plan_shared_by', { p_plan_ids: planIds });
+  if (error) throw error;
+  return new Map(((rows ?? []) as (PlanSharedBy & { plan_id: UUID })[]).map(({ plan_id, ...person }) => [plan_id, person]));
 }
 
 function buildSocialProof(
   row: Record<string, unknown>,
   allInteractions: PlanParticipant[],
   me: UUID,
+  sharedBy?: PlanSharedBy,
 ): ActivitySocialProof {
   const activity: Activity = {
     id: row.id as string,
@@ -342,6 +355,10 @@ function buildSocialProof(
     external_source_key: (row.external_source_key as string) ?? null,
     cover_image_url: (row.cover_image_url as string) ?? null,
     all_day: (row.all_day as boolean) ?? false,
+    plan_kind: (row.plan_kind as Activity['plan_kind']) ?? null,
+    schedule_kind: (row.schedule_kind as Activity['schedule_kind']) ?? null,
+    schedule_days: (row.schedule_days as Activity['schedule_days']) ?? null,
+    schedule_timezone: (row.schedule_timezone as string) ?? null,
     updated_at: (row.updated_at as string) ?? (row.created_at as string),
     cancelled_at: (row.cancelled_at as string) ?? null,
     created_at: row.created_at as string,
@@ -371,7 +388,7 @@ function buildSocialProof(
     else if (state === 'out') outConnections.push(i);
   }
 
-  return { activity, venue, interestedConnections, goingConnections, outConnections, myState, myRsvpNote };
+  return { activity, venue, shared_by: sharedBy ?? null, interestedConnections, goingConnections, outConnections, myState, myRsvpNote };
 }
 
 async function getPlan(planId: UUID): Promise<ActivitySocialProof | null> {
@@ -383,10 +400,12 @@ async function getPlan(planId: UUID): Promise<ActivitySocialProof | null> {
     .maybeSingle();
   if (error) throw error;
   if (!plan) return null;
-  const { data: participants, error: participantError } = await supabase
-    .rpc('plan_participants', { p_plan_ids: [planId] });
+  const [{ data: participants, error: participantError }, sharedBy] = await Promise.all([
+    supabase.rpc('plan_participants', { p_plan_ids: [planId] }),
+    getPlanSharers([planId]),
+  ]);
   if (participantError) throw participantError;
-  return buildSocialProof(plan as Record<string, unknown>, (participants ?? []) as PlanParticipant[], me);
+  return buildSocialProof(plan as Record<string, unknown>, (participants ?? []) as PlanParticipant[], me, sharedBy.get(planId));
 }
 
 async function getPlanInviteeIds(planId: UUID): Promise<UUID[]> {
@@ -404,7 +423,12 @@ type PlanMutationResult = {
 };
 
 function planRpcArgs(input: PlanInput) {
+  validatePlanSchedule(input);
   return {
+    p_plan_kind: input.plan_kind,
+    p_schedule_kind: input.schedule_kind,
+    p_schedule_days: input.schedule_days,
+    p_schedule_timezone: input.schedule_timezone,
     p_name: input.name,
     p_description: input.description,
     p_emoji: input.emoji,
@@ -422,7 +446,7 @@ function planRpcArgs(input: PlanInput) {
 }
 
 async function createPlan(input: PlanInput): Promise<Activity> {
-  const { data: result, error } = await supabase.rpc('create_plan_v2', planRpcArgs(input));
+  const { data: result, error } = await supabase.rpc('create_plan_v3', planRpcArgs(input));
   if (error) throw error;
   const payload = result as PlanMutationResult;
   await Promise.all((payload.notified_parent_ids ?? []).map((parentId) =>
@@ -431,7 +455,7 @@ async function createPlan(input: PlanInput): Promise<Activity> {
 }
 
 async function updatePlan(planId: UUID, input: PlanInput): Promise<Activity> {
-  const { data: result, error } = await supabase.rpc('update_plan_v2', {
+  const { data: result, error } = await supabase.rpc('update_plan_v3', {
     p_plan: planId,
     ...planRpcArgs(input),
   });
@@ -477,10 +501,12 @@ async function findExistingPlan(
   }
   if (!row) return null;
   const planId = row.id as UUID;
-  const { data: participants, error: participantError } = await supabase
-    .rpc('plan_participants', { p_plan_ids: [planId] });
+  const [{ data: participants, error: participantError }, sharedBy] = await Promise.all([
+    supabase.rpc('plan_participants', { p_plan_ids: [planId] }),
+    getPlanSharers([planId]),
+  ]);
   if (participantError) throw participantError;
-  return buildSocialProof(row, (participants ?? []) as PlanParticipant[], me);
+  return buildSocialProof(row, (participants ?? []) as PlanParticipant[], me, sharedBy.get(planId));
 }
 
 async function cancelPlan(planId: UUID): Promise<void> {

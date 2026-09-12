@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { withPushDeliveryBudget } from './push-delivery-budget.ts';
 
 export type VillagePushType =
   | 'connection_request'
@@ -15,10 +16,13 @@ export async function deliverVillagePush(
   recipientId: string,
   type: VillagePushType,
 ): Promise<void> {
-  const { error } = await supabase.functions.invoke('connection-push', {
-    body: { recipientId, type },
+  await withPushDeliveryBudget(async (signal) => {
+    const { error } = await supabase.functions.invoke('connection-push', {
+      body: { recipientId, type },
+      signal,
+    });
+    if (error) throw error;
   });
-  if (error) throw error;
 }
 
 export async function deliverVillagePushBestEffort(

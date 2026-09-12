@@ -1,7 +1,8 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   Modal,
   Pressable,
+  ScrollView,
   Text,
   View,
   useWindowDimensions,
@@ -13,13 +14,12 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
-import { router } from 'expo-router';
 import { colors, fonts } from '@/lib/constants';
 import { data } from '@/lib/data';
 import { planRsvpCopy } from '@/lib/plan-rsvp-copy';
 import { Icon, TwinkleSparkle } from '@/components/ui';
 import { useInterestSheet } from '@/store/interestSheet';
-import type { InteractionState } from '@/types';
+import type { InteractionState, PlanKind } from '@/types';
 
 /**
  * Bottom action sheet for picking an activity interaction state.
@@ -33,6 +33,8 @@ export function InterestSheetHost() {
   const dismiss = useInterestSheet((s) => s.dismiss);
   const { height } = useWindowDimensions();
   const [saving, setSaving] = useState(false);
+  const pending = useRef(false);
+  const close = () => { if (!pending.current) dismiss(); };
   const [error, setError] = useState<string | null>(null);
 
   const translateY = useSharedValue(height);
@@ -57,10 +59,12 @@ export function InterestSheetHost() {
   }));
 
   if (!payload) return null;
-  const copy = planRsvpCopy(payload.hasExternalListing);
+  const isSignup = payload.planKind === 'signup';
+  const copy = planRsvpCopy(payload.planKind);
 
   const handlePick = async (next: InteractionState | null) => {
-    if (saving) return;
+    if (pending.current) return;
+    pending.current = true;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     setSaving(true);
     setError(null);
@@ -72,18 +76,16 @@ export function InterestSheetHost() {
       }
       payload.onChanged(next);
       dismiss();
-      if (payload.hasExternalListing && next === 'going') {
-        router.push(`/plan/${payload.activityId}` as never);
-      }
     } catch {
       setError('Could not update your response. Please try again.');
     } finally {
+      pending.current = false;
       setSaving(false);
     }
   };
 
   return (
-    <Modal visible transparent statusBarTranslucent animationType="none" onRequestClose={dismiss}>
+    <Modal visible transparent statusBarTranslucent animationType="none" onRequestClose={close}>
       <Animated.View
         style={[
           {
@@ -97,16 +99,18 @@ export function InterestSheetHost() {
           backdropStyle,
         ]}
       >
-        <Pressable style={{ flex: 1 }} onPress={dismiss} />
+        <Pressable style={{ flex: 1 }} onPress={close} />
       </Animated.View>
 
       <Animated.View
+        accessibilityViewIsModal
         style={[
           {
             position: 'absolute',
             left: 0,
             right: 0,
             bottom: 0,
+            maxHeight: height - 70,
             backgroundColor: colors.cream,
             borderTopLeftRadius: 28,
             borderTopRightRadius: 28,
@@ -121,6 +125,7 @@ export function InterestSheetHost() {
           sheetStyle,
         ]}
       >
+        <ScrollView bounces={false} showsVerticalScrollIndicator={false}>
         {/* drag handle */}
         <View
           style={{
@@ -146,7 +151,7 @@ export function InterestSheetHost() {
                 letterSpacing: 0.6,
               }}
             >
-              {payload.hasExternalListing ? 'REGISTRATION STATUS' : "WHAT'S YOUR MOVE?"}
+              {isSignup ? 'YOUR SIGNUP STATUS' : 'YOUR RESPONSE'}
             </Text>
             <Text
               style={{
@@ -165,16 +170,16 @@ export function InterestSheetHost() {
 
         <View style={{ gap: 10, marginTop: 16 }}>
           <SheetButton
-            label={payload.hasExternalListing ? "We're signed up" : "I'm going"}
+            label={isSignup ? "We're signed up" : "I'm going"}
             tint="terracotta"
             iconLeft={<Icon name="wave" size={20} color={colors.white} weight={2.4} />}
             selected={payload.currentState === 'going' || payload.currentState === 'attended'}
             disabled={saving}
             onPress={() => handlePick('going')}
           />
-          {payload.hasExternalListing ? (
+          {isSignup ? (
             <Text style={{ fontFamily: fonts.sans, fontSize: 11.5, lineHeight: 17, color: colors.taupe, textAlign: 'center', paddingHorizontal: 12 }}>
-              Signed up opens the plan so you can add child, days, times, or group details.
+              This tells friends your status. Registration happens separately with the organizer.
             </Text>
           ) : null}
           <SheetButton
@@ -195,7 +200,7 @@ export function InterestSheetHost() {
           />
           {payload.currentState && payload.currentState !== 'skipped' ? (
             <SheetButton
-              label="Remove"
+              label="Clear my response"
               tint="ghost"
               disabled={saving}
               onPress={() => handlePick(null)}
@@ -205,7 +210,7 @@ export function InterestSheetHost() {
         </View>
 
         <Pressable
-          onPress={dismiss}
+          onPress={close}
           style={{ alignSelf: 'center', paddingTop: 18, paddingBottom: 6 }}
         >
           <Text
@@ -218,6 +223,7 @@ export function InterestSheetHost() {
             never mind
           </Text>
         </Pressable>
+        </ScrollView>
       </Animated.View>
     </Modal>
   );
@@ -238,6 +244,8 @@ function SheetButton({ label, tint, iconLeft, selected, disabled, onPress }: She
 
   return (
     <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ selected, disabled, busy: disabled }}
       disabled={disabled}
       onPress={onPress}
       style={{
@@ -280,7 +288,7 @@ export function presentInterestSheet(args: {
   activityId: string;
   activityName: string;
   emoji: string | null;
-  hasExternalListing: boolean;
+  planKind: PlanKind;
   currentState: InteractionState | null;
   onChanged: (state: InteractionState | null) => void;
 }) {

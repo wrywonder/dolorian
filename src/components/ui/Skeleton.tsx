@@ -7,7 +7,7 @@ import Animated, {
   withRepeat,
   withTiming,
 } from 'react-native-reanimated';
-import { colors } from '@/lib/constants';
+import { colors, radii, spacing } from '@/lib/constants';
 
 type SkeletonProps = {
   width?: number | `${number}%`;
@@ -92,33 +92,18 @@ export function PostCardSkeleton() {
 /** Activity card skeleton — used in Plans. */
 export function ActivityCardSkeleton() {
   return (
-    <View
-      style={{
-        borderRadius: 22,
-        overflow: 'hidden',
-        marginBottom: 26,
-        backgroundColor: colors.surface,
-      }}
-    >
-      <Skeleton width="100%" height={210} radius={0} />
-      <View
-        style={{
-          padding: 13,
-          paddingHorizontal: 16,
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 10,
-        }}
-      >
-        <View style={{ flexDirection: 'row' }}>
-          <SkeletonCircle size={28} />
-          <SkeletonCircle size={28} style={{ marginLeft: -10 }} />
-          <SkeletonCircle size={28} style={{ marginLeft: -10 }} />
-        </View>
-        <View style={{ flex: 1, gap: 6 }}>
-          <Skeleton width="80%" height={13} />
-        </View>
-        <Skeleton width={80} height={32} radius={14} />
+    <View accessibilityLabel="Loading plan" style={{ borderRadius: radii.lg, overflow: 'hidden', marginBottom: spacing.lg, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.rule }}>
+      <Skeleton height={8} radius={0} />
+      <View style={{ padding: spacing.lg, gap: spacing.sm }}>
+        <Skeleton width="62%" height={12} />
+        <Skeleton width="80%" height={28} />
+        <Skeleton width="55%" height={14} />
+        <Skeleton width="66%" height={12} />
+      </View>
+      <View style={{ padding: spacing.md, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, borderTopWidth: 1, borderTopColor: colors.rule }}>
+        <SkeletonCircle size={24} />
+        <View style={{ flex: 1 }}><Skeleton width="60%" height={13} /></View>
+        <Skeleton width={88} height={44} radius={radii.pill} />
       </View>
     </View>
   );

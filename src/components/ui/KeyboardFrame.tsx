@@ -9,9 +9,17 @@ export function KeyboardFrame({ children, style, accessibilityViewIsModal }: { c
   const [top, setTop] = useState(0);
   const [visible, setVisible] = useState(Keyboard.isVisible());
   useEffect(() => {
-    const show = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', () => setVisible(true));
-    const hide = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', () => setVisible(false));
-    return () => { show.remove(); hide.remove(); };
+    // A new route can mount between willHide and didHide. Always listen for
+    // completion too, or it can keep a stale Done bar after navigation.
+    const subscriptions = [
+      Keyboard.addListener('keyboardDidShow', () => setVisible(true)),
+      Keyboard.addListener('keyboardDidHide', () => setVisible(false)),
+    ];
+    if (Platform.OS === 'ios') subscriptions.push(
+      Keyboard.addListener('keyboardWillShow', () => setVisible(true)),
+      Keyboard.addListener('keyboardWillHide', () => setVisible(false)),
+    );
+    return () => subscriptions.forEach((subscription) => subscription.remove());
   }, []);
   return (
     <View accessibilityViewIsModal={accessibilityViewIsModal} ref={frame} collapsable={false} style={{ flex: 1 }} onLayout={() => {

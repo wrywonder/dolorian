@@ -1,557 +1,329 @@
-import { PlanPlacePicker } from './PlanPlacePicker';
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import {
-  ActivityIndicator,
-  Keyboard,
-  Platform,
-  Pressable,
-  Switch,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
-import { FormScrollView as ScrollView } from '@/components/ui/FormScrollView';
-import { KeyboardFrame } from '@/components/ui/KeyboardFrame';
-import { router, useLocalSearchParams } from 'expo-router';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { ActivityIndicator, Alert, Keyboard, Pressable, Switch, Text, TextInput, View } from 'react-native';
+import { router, useLocalSearchParams, useNavigation } from 'expo-router';
+import { usePreventRemove } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import { FormScrollView } from '@/components/ui/FormScrollView';
+import { KeyboardFrame } from '@/components/ui/KeyboardFrame';
 import { AvatarCircle, Icon, TerracottaButton } from '@/components/ui';
-import { colors, fonts, radii } from '@/lib/constants';
+import { PlanPlacePicker } from './PlanPlacePicker';
+import { PlanDateField } from './plan-date-field';
+import { colors, fonts, radii, spacing } from '@/lib/constants';
 import { data } from '@/lib/data';
 import { createLatestRequest } from '@/lib/latest-request';
-import { applyPlanLinkPreview } from '@/lib/plan-import-draft';
+import { applyPlanLinkPreview, isSamePlanImportSource, PLAN_IMPORT_TEXT_FIELDS, type PlanImportTextField } from '@/lib/plan-import-draft';
+import { clearPlanDate, draftFromPlan, emptyPlanDraft, planInputFromDraft, shiftPlanDate, weekdayForDate, type PlanEditorDraft } from '@/lib/plan-editor-draft';
+import { getDeviceTimeZone, planDateKey } from '@/lib/plan-schedule';
 import { readableError } from '@/lib/error-message';
-import type { ActivitySocialProof, ConnectionView, PlanInput, PlanLinkPreview, PlanVisibility, UUID } from '@/types';
+import type { ActivitySocialProof, ConnectionView, PlanLinkPreview, PlanVisibility, PlanWeekday, UUID } from '@/types';
 
 const AUDIENCES: { value: PlanVisibility; label: string; detail: string; icon: 'sun' | 'person.2' | 'lock' }[] = [
-  { value: 'public', label: 'Public', detail: 'Any signed-in Village parent can discover it.', icon: 'sun' },
-  { value: 'connections', label: 'My village', detail: 'Every accepted connection can see it.', icon: 'person.2' },
-  { value: 'invited', label: 'Invited only', detail: 'Only the connections you choose can see it.', icon: 'lock' },
+  { value: 'connections', label: 'My connections', detail: 'Everyone you’re connected with.', icon: 'person.2' },
+  { value: 'invited', label: 'Choose friends', detail: 'Only the people you pick.', icon: 'lock' },
+  { value: 'public', label: 'Public', detail: 'Any signed-in Village parent.', icon: 'sun' },
 ];
+const WEEKDAYS: { value: PlanWeekday; short: string; name: string }[] = [
+  { value: 1, short: 'M', name: 'Monday' }, { value: 2, short: 'T', name: 'Tuesday' },
+  { value: 3, short: 'W', name: 'Wednesday' }, { value: 4, short: 'T', name: 'Thursday' },
+  { value: 5, short: 'F', name: 'Friday' }, { value: 6, short: 'S', name: 'Saturday' },
+  { value: 0, short: 'S', name: 'Sunday' },
+];
+const EMOJIS = ['✨', '🍕', '⚽', '☀️', '🎂', '🌳', '🎨', '🏊', '🏡'];
 
 export function PlanEditorScreen() {
   const { id } = useLocalSearchParams<{ id?: string }>();
   const editing = Boolean(id);
-  const initialStart = useMemo(() => nextFriendlyStart(), []);
+  const navigation = useNavigation();
+  const [draft, setDraft] = useState(emptyPlanDraft);
+  const [baseline, setBaseline] = useState(() => JSON.stringify(draft));
   const [connections, setConnections] = useState<ConnectionView[]>([]);
-  const [loadAttempt, setLoadAttempt] = useState(0);
   const [loading, setLoading] = useState(editing);
-  const [saving, setSaving] = useState(false);
-  const [importRequests] = useState(createLatestRequest);
-  const importPending = useRef(false);
-  const savePending = useRef(false);
-  const previousImport = useRef<PlanLinkPreview | null>(null);
+  const [loadingConnections, setLoadingConnections] = useState(true);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [canEdit, setCanEdit] = useState(!editing);
+  const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [choosingPlace, setChoosingPlace] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [importResult, setImportResult] = useState<PlanLinkPreview | null>(null);
   const [existingPlan, setExistingPlan] = useState<ActivitySocialProof | null>(null);
   const [createSeparatePlan, setCreateSeparatePlan] = useState(false);
-  const [myId, setMyId] = useState<UUID | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [sourceUrl, setSourceUrl] = useState('');
-  const [sourceKey, setSourceKey] = useState('');
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [emoji, setEmoji] = useState('✨');
-  const [date, setDate] = useState(formatDateInput(initialStart));
-  const [time, setTime] = useState(formatTimeInput(initialStart));
-  const [endDate, setEndDate] = useState('');
-  const [endTime, setEndTime] = useState('');
-  const [allDay, setAllDay] = useState(false);
-  const [visibility, setVisibility] = useState<PlanVisibility>('connections');
-  const [invitedIds, setInvitedIds] = useState<Set<UUID>>(new Set());
-  const [choosingPlace, setChoosingPlace] = useState(false);
-  const [locationName, setLocationName] = useState('');
-  const [locationAddress, setLocationAddress] = useState('');
-  const [coverImageUrl, setCoverImageUrl] = useState('');
+  const [importOpen, setImportOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [audienceOpen, setAudienceOpen] = useState(false);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const [connectionSearch, setConnectionSearch] = useState('');
+  const [importRequests] = useState(createLatestRequest);
+  const importPending = useRef(false);
+  const savePending = useRef(false);
+  const leaveAllowed = useRef(false);
+  const previousImport = useRef<PlanLinkPreview | null>(null);
+  const savedSource = useRef<{ url: string; sourceKey: string } | null>(null);
+  const ownedImportText = useRef(new Set<PlanImportTextField>());
+  const ownedImportSchedule = useRef(false);
+  const busy = importing || saving || !canEdit;
+  const update = (patch: Partial<PlanEditorDraft>) => {
+    for (const field of PLAN_IMPORT_TEXT_FIELDS) if (field in patch) ownedImportText.current.add(field);
+    if (['date', 'time', 'endDate', 'endTime', 'allDay', 'repeating', 'days'].some((field) => field in patch)) ownedImportSchedule.current = true;
+    setDraft((current) => ({ ...current, ...patch }));
+  };
+
+  usePreventRemove(!loading && canEdit && (JSON.stringify(draft) !== baseline || saving), ({ data: event }) => {
+    if (leaveAllowed.current) { navigation.dispatch(event.action); return; }
+    if (savePending.current) return;
+    Alert.alert('Leave this plan?', 'Your changes haven’t been shared yet.', [
+      { text: 'Keep editing', style: 'cancel' },
+      { text: 'Discard', style: 'destructive', onPress: () => navigation.dispatch(event.action) },
+    ]);
+  });
 
   useEffect(() => {
     let active = true;
     setLoading(editing);
+    setLoadingConnections(true);
     setCanEdit(!editing);
-    setError(null);
-    Promise.all([
-      data.getConnectionViews(),
-      id ? data.getPlan(id) : Promise.resolve(null),
-      id ? data.getPlanInviteeIds(id) : Promise.resolve([]),
-      data.getCurrentUser(),
-    ]).then(([rows, proof, invitees, me]) => {
-      if (!active) return;
-      setMyId(me.id);
-      const currentConnections = rows.filter((row) => row.connection.status === 'connected');
-      setConnections(currentConnections);
-      const acceptedIds = new Set(currentConnections.map((row) => row.parent.id));
-      setInvitedIds(new Set(invitees.filter((parentId) => acceptedIds.has(parentId))));
-      if (proof) {
-        const plan = proof.activity;
-        if (plan.created_by !== me.id) {
-          setError('Only the person who created this plan can edit it.');
-          return;
+    setLoadError(null);
+    Promise.all([data.getConnectionViews(), id ? data.getPlan(id) : Promise.resolve(null), id ? data.getPlanInviteeIds(id) : Promise.resolve([]), data.getCurrentUser()])
+      .then(([rows, proof, invitees, me]) => {
+        if (!active) return;
+        const accepted = rows.filter((row) => row.connection.status === 'connected');
+        setConnections(accepted);
+        if (!id) return;
+        if (!proof || proof.activity.created_by !== me.id || proof.activity.cancelled_at) {
+          setLoadError('This plan is unavailable or you cannot edit it.'); return;
         }
-        if (plan.cancelled_at) {
-          setError('This plan was cancelled and can no longer be edited.');
-          return;
-        }
-        setCanEdit(true);
-        setName(plan.name);
-        setDescription(plan.description ?? '');
-        setEmoji(plan.emoji ?? '✨');
-        setSourceUrl(plan.external_url ?? '');
-        setSourceKey(plan.external_source_key ?? '');
-        setCoverImageUrl(plan.cover_image_url ?? '');
-        setLocationName(plan.location_name ?? proof.venue?.name ?? '');
-        setLocationAddress(plan.location_address ?? '');
-        setVisibility(plan.visibility);
-        setAllDay(plan.all_day);
-        if (plan.starts_at) {
-          const start = new Date(plan.starts_at);
-          setDate(formatDateInput(start));
-          setTime(formatTimeInput(start));
-        }
-        if (plan.ends_at) {
-          const end = new Date(plan.ends_at);
-          setEndDate(formatDateInput(end));
-          setEndTime(formatTimeInput(end));
-        }
-      } else if (id) {
-        setError('This plan is unavailable or you cannot edit it.');
-      }
-    }).catch((cause) => {
-      if (active) setError(readableError(cause, 'Could not load the plan editor.'));
-    }).finally(() => { if (active) setLoading(false); });
+        const acceptedIds = new Set(accepted.map((row) => row.parent.id));
+        const next = draftFromPlan(proof.activity, invitees.filter((parentId) => acceptedIds.has(parentId)), proof.venue?.name);
+        savedSource.current = { url: next.sourceUrl, sourceKey: next.sourceKey };
+        ownedImportText.current = new Set(PLAN_IMPORT_TEXT_FIELDS.filter((field) => Boolean(next[field])));
+        ownedImportSchedule.current = false;
+        setDraft(next); setBaseline(JSON.stringify(next)); setCanEdit(true);
+        setDetailsOpen(Boolean(next.description || next.sourceUrl || next.planKind === 'signup'));
+        setScheduleOpen(next.repeating || Boolean(next.endDate && next.endDate !== next.date));
+      }).catch((cause) => { if (active) setLoadError(readableError(cause, 'Could not load your connections and plan.')); })
+      .finally(() => { if (active) { setLoading(false); setLoadingConnections(false); } });
     return () => { active = false; importRequests.invalidate(); };
   }, [id, editing, importRequests, loadAttempt]);
 
+  const changeUrl = (sourceUrl: string) => {
+    importRequests.invalidate(); importPending.current = false; setImporting(false);
+    update({ sourceUrl, sourceKey: '' }); setImportResult(null); setExistingPlan(null); setCreateSeparatePlan(false);
+  };
   const importLink = async () => {
     if (savePending.current || importPending.current || choosingPlace || !canEdit) return;
-    if (!sourceUrl.trim()) { setError('Paste a public link first.'); return; }
-    const isCurrent = importRequests.begin();
-    importPending.current = true;
-    setImporting(true);
-    setError(null);
+    if (!draft.sourceUrl.trim()) { setError('Paste a link first.'); return; }
+    Keyboard.dismiss();
+    const current = importRequests.begin();
+    importPending.current = true; setImporting(true); setError(null);
     try {
-      const preview = await data.importPlanLink(sourceUrl.trim());
-      if (!isCurrent()) return;
+      const preview = await data.importPlanLink(draft.sourceUrl.trim());
+      if (!current()) return;
       const match = await data.findExistingPlan(preview.sourceKey, preview.url, id);
-      if (!isCurrent()) return;
-      const draft = applyPlanLinkPreview({ name, description, emoji, locationName, locationAddress, coverImageUrl, date, time, endDate, endTime, allDay }, preview, previousImport.current);
-      setSourceUrl(preview.url);
-      setSourceKey(preview.sourceKey);
-      setName(draft.name);
-      setDescription(draft.description);
-      setCoverImageUrl(draft.coverImageUrl);
-      setEmoji(draft.emoji);
-      setLocationName(draft.locationName);
-      setLocationAddress(draft.locationAddress);
-      setDate(draft.date);
-      setTime(draft.time);
-      setEndDate(draft.endDate);
-      setEndTime(draft.endTime);
-      setAllDay(draft.allDay);
-      previousImport.current = preview;
-      setImportResult(preview);
-      setExistingPlan(match);
-      setCreateSeparatePlan(false);
-    } catch (cause) {
-      if (isCurrent()) setError(readableError(cause, 'Could not import that link. You can still add its details manually.'));
-    } finally {
-      if (isCurrent()) { importPending.current = false; setImporting(false); }
-    }
+      if (!current()) return;
+      const sameSource = isSamePlanImportSource(previousImport.current ?? savedSource.current, preview);
+      const fields = applyPlanLinkPreview(draft, preview, previousImport.current, {
+        preserveExisting: sameSource && Boolean(savedSource.current),
+        preserveSchedule: sameSource && (draft.repeating || ownedImportSchedule.current),
+        ownedTextFields: ownedImportText.current,
+      });
+      // Imported values are not user edits. Keep that distinction for the next reread.
+      setDraft((currentDraft) => ({ ...currentDraft, ...fields, sourceUrl: preview.url, sourceKey: preview.sourceKey, repeating: sameSource && draft.repeating, days: sameSource ? draft.days : [] }));
+      if (!sameSource) { savedSource.current = null; ownedImportText.current.clear(); ownedImportSchedule.current = false; }
+      setDetailsOpen(Boolean(fields.description)); setScheduleOpen((sameSource && draft.repeating) || Boolean(fields.endDate && fields.endDate !== fields.date));
+      previousImport.current = preview; setImportResult(preview); setExistingPlan(match); setCreateSeparatePlan(false);
+    } catch { if (current()) setError('Could not read that page. Check the link and try again, or keep filling in your draft.'); }
+    finally { if (current()) { importPending.current = false; setImporting(false); } }
   };
-
-  const toggleInvite = (parentId: UUID) => {
-    setInvitedIds((current) => {
-      const next = new Set(current);
-      if (next.has(parentId)) next.delete(parentId); else next.add(parentId);
-      return next;
-    });
-  };
-
   const save = async () => {
     if (savePending.current || importPending.current || choosingPlace || !canEdit) return;
-    savePending.current = true;
-    setSaving(true);
-    setError(null);
+    savePending.current = true; setSaving(true); setError(null); Keyboard.dismiss();
     try {
-      if (existingPlan && !createSeparatePlan) {
-        throw new Error('This listing is already in Village. Open the existing plan to coordinate there, or choose to make a separate plan.');
-      }
-      const startsAt = parseLocalDateTime(date, time, allDay);
-      const endsAt = endDate.trim()
-        ? parseLocalDateTime(endDate, endTime || time, allDay)
-        : null;
-      if (endsAt && Date.parse(endsAt) < Date.parse(startsAt)) throw new Error('Choose an end after the start of the plan.');
-      if (visibility === 'invited' && invitedIds.size === 0) {
-        throw new Error('Choose at least one connection for an invited-only plan.');
-      }
-      const input: PlanInput = {
-        name: name.trim(),
-        description: description.trim(),
-        emoji: emoji.trim() || '✨',
-        starts_at: startsAt,
-        ends_at: endsAt,
-        all_day: allDay,
-        visibility,
-        invited_parent_ids: visibility === 'invited' ? [...invitedIds] : [],
-        location_name: locationName.trim(),
-        location_address: locationAddress.trim(),
-        external_url: sourceUrl.trim(),
-        external_source_key: sourceKey,
-        cover_image_url: coverImageUrl.trim(),
-      };
-      const saved = id ? await data.updatePlan(id, input) : await data.createPlan(input);
-      if (editing) router.dismissTo(`/plan/${saved.id}` as never);
-      else router.replace(`/plan/${saved.id}` as never);
-    } catch (cause) {
-      setError(readableError(cause, 'Could not save this plan.'));
-    } finally {
-      savePending.current = false;
-      setSaving(false);
-    }
+      if (existingPlan && !createSeparatePlan) throw new Error('Open the existing plan, or choose to make a separate plan.');
+      const input = planInputFromDraft(draft);
+      const plan = id ? await data.updatePlan(id, input) : await data.createPlan(input);
+      leaveAllowed.current = true;
+      if (editing) router.dismissTo(`/plan/${plan.id}` as never);
+      else router.replace(`/plan/${plan.id}` as never);
+    } catch (cause) { setError(readableError(cause, 'Could not save this plan. Your draft is still here.')); }
+    finally { savePending.current = false; setSaving(false); }
   };
+  const toggleInvite = (parentId: UUID) => update({ invitedIds: draft.invitedIds.includes(parentId) ? draft.invitedIds.filter((item) => item !== parentId) : [...draft.invitedIds, parentId] });
+  const selectDate = (date: string) => update({ date, endDate: draft.endDate === draft.date ? date : draft.endDate });
+  const audienceLabel = draft.visibility === 'invited' ? `${draft.invitedIds.length} friend${draft.invitedIds.length === 1 ? '' : 's'} selected` : draft.visibility === 'public' ? 'Public' : 'My connections';
+  const visibleConnections = connections.filter((row) => row.parent.display_name.toLocaleLowerCase().includes(connectionSearch.trim().toLocaleLowerCase()));
 
-  if (loading) {
-    return <SafeAreaView style={styles.loading}><ActivityIndicator color={colors.terracotta} /></SafeAreaView>;
-  }
+  if (loading) return <SafeAreaView style={styles.center}><ActivityIndicator color={colors.terracotta} /></SafeAreaView>;
+  if (editing && !canEdit) return <SafeAreaView style={styles.center}>
+    <Text style={styles.title}>plan unavailable</Text><Text accessibilityRole="alert" style={styles.help}>{loadError}</Text>
+    <TerracottaButton label="try again" onPress={() => setLoadAttempt((value) => value + 1)} />
+    <TextAction label="go back" onPress={() => router.back()} />
+  </SafeAreaView>;
 
-  if (editing && !canEdit) {
-    return <SafeAreaView style={[styles.loading, { padding: 24, gap: 16 }]}>
-      <Text style={styles.sectionTitle}>plan unavailable</Text>
-      <Text selectable accessibilityRole="alert" style={styles.help}>{error}</Text>
-      <TerracottaButton label="try again" onPress={() => setLoadAttempt((attempt) => attempt + 1)} />
-      <Pressable accessibilityRole="button" onPress={() => router.back()} style={styles.secondaryButton}><Text style={styles.secondaryText}>go back</Text></Pressable>
-    </SafeAreaView>;
-  }
-
-  return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.cream }} edges={['top', 'bottom']}>
-      <View style={styles.header}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Back" onPress={() => router.back()} style={styles.iconButton}>
-          <View style={{ transform: [{ rotate: '180deg' }] }}><Icon name="chevron.right" size={19} color={colors.dark} /></View>
-        </Pressable>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.eyebrow}>{editing ? 'EDIT PLAN' : 'A NEW ADVENTURE'}</Text>
-          <Text style={styles.title}>{editing ? 'make a change' : 'add a plan'}</Text>
-        </View>
-      </View>
-
-      <KeyboardFrame style={{ flex: 1 }}>
-        <ScrollView
-          style={{ flex: 1 }}
-          contentInsetAdjustmentBehavior="automatic"
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
-          contentContainerStyle={styles.content}
-        >
-          <Section eyebrow="IMPORT" title="start with a link">
-            <Text style={styles.help}>Have a camp, class, or event listing? Paste it here and Village will prefill the shared facts. Planning something informal, like a Sonoma house weekend? Skip the link and fill in the plan below.</Text>
-            <TextInput
-              editable={!saving && canEdit}
-              accessibilityLabel="Original listing link"
-              value={sourceUrl}
-              onChangeText={(value) => {
-                importRequests.invalidate();
-                importPending.current = false;
-                setImporting(false);
-                setSourceUrl(value);
-                setSourceKey('');
-                setImportResult(null);
-                setExistingPlan(null);
-                setCreateSeparatePlan(false);
-              }}
-              onSubmitEditing={importLink}
-              returnKeyType="go"
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="url"
-              placeholder="https://…"
-              placeholderTextColor={colors.taupe}
-              style={styles.field}
-            />
-            <SecondaryButton disabled={choosingPlace || saving || !canEdit} label={importing ? 'reading the page…' : 'prefill plan details'} loading={importing} onPress={importLink} />
-            {importResult ? (
-              <View style={styles.importSuccess}>
-                <Icon name="check.circle" size={20} color={colors.sage} />
-                <View style={{ flex: 1, gap: 2 }}>
-                  <Text style={styles.importSuccessTitle}>
-                    Filled {importResult.importedFields.length} detail{importResult.importedFields.length === 1 ? '' : 's'}
-                  </Text>
-                  <Text style={styles.help}>
-                    {importResult.inference === 'ai'
-                      ? 'AI-assisted import'
-                      : importResult.inference === 'provider'
-                        ? 'Filled from the link'
-                        : 'Read from the listing'} · review below before publishing
-                  </Text>
-                </View>
-              </View>
-            ) : null}
-            {importResult?.warnings.map((warning) => (
-              <View key={warning} style={styles.importWarning}>
-                <Icon name="info" size={18} color={colors.terracotta} />
-                <Text selectable style={[styles.help, { flex: 1, color: colors.brownMid }]}>{warning}</Text>
-              </View>
-            ))}
-            {existingPlan && !createSeparatePlan ? (
-              <View style={styles.existingPlan}>
-                <Text style={styles.eyebrow}>ALREADY IN VILLAGE</Text>
-                <Text style={styles.existingTitle}>{existingPlan.activity.name}</Text>
-                <Text style={styles.help}>
-                  {existingPlan.activity.created_by === myId ? 'You already added this listing.' : 'Someone you can see already added this listing.'}{' '}
-                  {participantCount(existingPlan)} {participantCount(existingPlan) === 1 ? 'family is' : 'families are'} coordinating there.
-                </Text>
-                <SecondaryButton label="open existing plan →" onPress={() => router.replace(`/plan/${existingPlan.activity.id}` as never)} />
-                <Pressable onPress={() => setCreateSeparatePlan(true)} style={{ alignSelf: 'center', padding: 6 }}>
-                  <Text style={styles.separateText}>this is actually a separate plan</Text>
-                </Pressable>
-              </View>
-            ) : null}
-          </Section>
-
-          <View pointerEvents={importing || saving || !canEdit ? 'none' : 'auto'} style={{ gap: 16, opacity: importing ? 0.6 : 1 }}>
-          <Section eyebrow="THE PLAN" title="what’s happening?">
-            <View style={{ flexDirection: 'row', gap: 10 }}>
-              <TextInput editable={!importing && !saving && canEdit} value={emoji} onChangeText={setEmoji} maxLength={4} accessibilityLabel="Plan emoji" style={[styles.field, { width: 58, textAlign: 'center', fontSize: 22, paddingHorizontal: 4 }]} />
-              <TextInput accessibilityLabel="Plan name" editable={!importing && !saving && canEdit} value={name} onChangeText={setName} maxLength={140} placeholder="Saturday farmers market" placeholderTextColor={colors.taupe} style={[styles.field, { flex: 1 }]} />
-            </View>
-            <TextInput accessibilityLabel="Plan details" editable={!importing && !saving && canEdit} value={description} onChangeText={setDescription} maxLength={600} multiline placeholder="A few useful details for other parents…" placeholderTextColor={colors.taupe} style={[styles.field, styles.multiline]} />
-            <PlanPlacePicker name={locationName} address={locationAddress} disabled={importing || saving || !canEdit} onBusyChange={setChoosingPlace} onChange={(placeName, address) => { setLocationName(placeName); setLocationAddress(address); }} />
-          </Section>
-
-          <Section eyebrow="WHEN" title="pick a day">
-            <View style={{ flexDirection: 'row', gap: 10 }}>
-              {date ? <PickerField label="START DATE" mode="date" dateValue={date} timeValue={time} onChange={setDate} /> : <AddTimeButton label="CHOOSE A DAY" onPress={() => setDate(formatDateInput(initialStart))} />}
-              {!allDay ? time ? (
-                <PickerField label="TIME" mode="time" dateValue={date} timeValue={time} onChange={setTime} compact />
-              ) : (
-                <AddTimeButton label="ADD TIME" onPress={() => setTime('09:00')} />
-              ) : null}
-            </View>
-            {endDate ? (
-              <View style={{ gap: 8 }}>
-                <View style={{ flexDirection: 'row', gap: 10 }}>
-                  <PickerField label="END DATE" mode="date" dateValue={endDate} timeValue={endTime || time} onChange={setEndDate} minimumDate={dateFromInputs(date, time)} />
-                  {!allDay ? endTime ? (
-                    <PickerField label="TIME" mode="time" dateValue={endDate} timeValue={endTime} onChange={setEndTime} compact />
-                  ) : (
-                    <AddTimeButton label="END TIME" onPress={() => setEndTime(defaultEndTime(time))} />
-                  ) : null}
-                </View>
-                <Pressable onPress={() => { setEndDate(''); setEndTime(''); }} style={{ alignSelf: 'flex-start', paddingVertical: 4 }}>
-                  <Text style={styles.separateText}>remove end date</Text>
-                </Pressable>
-              </View>
-            ) : (
-              <Pressable onPress={() => { setEndDate(date); setEndTime(allDay ? '' : defaultEndTime(time)); }} style={styles.addEndButton}>
-                <Icon name="plus.circle" size={18} color={colors.terracotta} />
-                <Text style={styles.secondaryText}>add an end date or camp range</Text>
-              </Pressable>
-            )}
-            {!date || (!allDay && !time) ? <Text style={styles.help}>Choose a day and a time, or mark this as an all-day plan.</Text> : null}
-            <View style={styles.toggleRow}>
-              <View style={{ flex: 1 }}><Text style={styles.rowLabel}>All-day plan</Text><Text style={styles.help}>Useful for camp weeks and day trips.</Text></View>
-              <Switch accessibilityLabel="All-day plan" value={allDay} onValueChange={setAllDay} trackColor={{ true: colors.terracotta }} />
-            </View>
-          </Section>
-
-          <Section eyebrow="WHO CAN SEE IT" title="choose the audience">
-            {AUDIENCES.map((audience) => {
-              const selected = visibility === audience.value;
-              return (
-                <Pressable key={audience.value} accessibilityRole="radio" accessibilityState={{ selected }} onPress={() => setVisibility(audience.value)} style={[styles.audienceCard, selected && styles.audienceSelected]}>
-                  <View style={[styles.audienceIcon, selected && { backgroundColor: colors.terracotta }]}><Icon name={audience.icon} size={19} color={selected ? colors.white : colors.terracotta} /></View>
-                  <View style={{ flex: 1 }}><Text style={styles.rowLabel}>{audience.label}</Text><Text style={styles.help}>{audience.detail}</Text></View>
-                  {selected ? <Icon name="check.circle" size={20} color={colors.terracotta} /> : null}
-                </Pressable>
-              );
-            })}
-
-            {visibility === 'invited' ? (
-              <View style={{ gap: 8, paddingTop: 4 }}>
-                <Text style={styles.eyebrow}>CHOOSE CONNECTIONS · {invitedIds.size} SELECTED</Text>
-                {connections.length ? connections.map((row) => {
-                  const selected = invitedIds.has(row.parent.id);
-                  return (
-                    <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: selected }} key={row.parent.id} onPress={() => toggleInvite(row.parent.id)} style={[styles.connectionRow, selected && { borderColor: colors.terracotta, backgroundColor: '#FFF6EF' }]}>
-                      <AvatarCircle initials={row.parent.avatar_initials} tone={row.parent.avatar_color} imageUrl={row.parent.avatar_url} size={38} />
-                      <View style={{ flex: 1 }}><Text style={styles.rowLabel}>{row.parent.display_name}</Text><Text style={styles.help}>{row.parent.neighborhood ?? 'Village connection'}</Text></View>
-                      <Icon name={selected ? 'check.circle' : 'plus.circle'} size={21} color={selected ? colors.terracotta : colors.taupe} />
-                    </Pressable>
-                  );
-                }) : <Text style={styles.help}>Add a connection in Your Village before creating an invited-only plan.</Text>}
-              </View>
-            ) : null}
-          </Section>
-
-          </View>
-
-          {error ? <Text selectable accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
-          <TerracottaButton label={saving ? 'saving plan…' : editing ? 'save changes →' : 'publish plan →'} onPress={save} disabled={choosingPlace || saving || importing || !canEdit || !name.trim() || !date || (!allDay && !time) || Boolean(existingPlan && !createSeparatePlan)} fullWidth />
-        </ScrollView>
-      </KeyboardFrame>
-    </SafeAreaView>
-  );
-}
-
-function Section({ eyebrow, title, children }: { eyebrow: string; title: string; children: ReactNode }) {
-  return <View style={styles.section}><Text style={styles.eyebrow}>{eyebrow}</Text><Text style={styles.sectionTitle}>{title}</Text>{children}</View>;
-}
-
-function PickerField({ label, mode, dateValue, timeValue, onChange, compact, minimumDate }: {
-  label: string;
-  mode: 'date' | 'time';
-  dateValue: string;
-  timeValue: string;
-  onChange: (value: string) => void;
-  compact?: boolean;
-  minimumDate?: Date;
-}) {
-  const [androidPickerOpen, setAndroidPickerOpen] = useState(false);
-  const picker = (
-    <DateTimePicker
-      value={dateFromInputs(dateValue, timeValue)}
-      mode={mode}
-      display={Platform.OS === 'ios' ? 'compact' : 'default'}
-      minimumDate={minimumDate}
-      minuteInterval={5}
-      onChange={(_, selected) => {
-        if (Platform.OS === 'android') setAndroidPickerOpen(false);
-        if (!selected) return;
-        onChange(mode === 'date' ? formatDateInput(selected) : formatTimeInput(selected));
-      }}
-    />
-  );
-
-  return (
-    <View style={{ flex: compact ? 0 : 1, minWidth: compact ? 112 : 0, gap: 5 }}>
-      <Text style={styles.eyebrow}>{label}</Text>
-      <View style={styles.pickerField} onTouchStart={Keyboard.dismiss}>
-        {Platform.OS === 'ios' ? picker : (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`Choose ${label.toLowerCase()}`}
-            onPress={() => setAndroidPickerOpen(true)}
-            style={styles.androidPickerButton}
-          >
-            <Text style={styles.androidPickerValue}>{mode === 'date' ? dateValue : timeValue}</Text>
-            <Icon name="chevron.right" size={15} color={colors.taupe} />
-          </Pressable>
-        )}
-      </View>
-      {Platform.OS === 'android' && androidPickerOpen ? picker : null}
-    </View>
-  );
-}
-
-function AddTimeButton({ label, onPress }: { label: string; onPress: () => void }) {
-  return (
-    <View style={{ width: 112, gap: 5 }}>
-      <Text style={styles.eyebrow}>{label}</Text>
-      <Pressable onPress={onPress} style={styles.pickerField}>
-        <Icon name="plus.circle" size={18} color={colors.terracotta} />
-        <Text style={styles.secondaryText}>add</Text>
+  return <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
+    <View style={styles.header}>
+      <Pressable accessibilityRole="button" accessibilityLabel="Back" disabled={saving} onPress={() => router.back()} style={styles.back}>
+        <View style={{ transform: [{ rotate: '180deg' }] }}><Icon name="chevron.right" size={19} color={colors.dark} /></View>
       </Pressable>
+      <Text style={styles.title}>{editing ? 'edit plan' : 'make a little plan'}</Text>
     </View>
-  );
+    <KeyboardFrame>
+      <FormScrollView contentContainerStyle={styles.content}>
+        <View style={styles.intro}>
+          <Text style={styles.sectionTitle}>what’s happening?</Text>
+          <View style={styles.row}>
+            <Pressable accessibilityRole="button" accessibilityLabel="Choose plan emoji" accessibilityState={{ expanded: emojiOpen }} disabled={busy} onPress={() => { Keyboard.dismiss(); setEmojiOpen(!emojiOpen); }} style={styles.emojiButton}><Text style={styles.emoji}>{draft.emoji}</Text></Pressable>
+            <TextInput accessibilityLabel="Plan name" editable={!busy} value={draft.name} onChangeText={(name) => update({ name })} maxLength={140} placeholder="Pizza at ours, anyone?" placeholderTextColor={colors.taupe} style={[styles.field, styles.nameField]} returnKeyType="done" onSubmitEditing={Keyboard.dismiss} />
+          </View>
+          {emojiOpen ? <View style={styles.emojiOptions}>{EMOJIS.map((emoji) => <Pressable key={emoji} accessibilityRole="button" accessibilityLabel={`Use ${emoji}`} disabled={busy} onPress={() => { update({ emoji }); setEmojiOpen(false); }} style={styles.emojiButton}><Text style={styles.emoji}>{emoji}</Text></Pressable>)}</View> : null}
+          {!importOpen ? <TextAction label="Have a signup link?" disabled={busy} onPress={() => { update({ planKind: 'signup' }); setImportOpen(true); }} /> : null}
+        </View>
+
+        {importOpen ? <Section title="bring the details along">
+          <Text style={styles.help}>Paste a camp, class, or event link. You can change anything we find.</Text>
+          <TextInput accessibilityLabel="Original listing link" editable={!saving && canEdit} value={draft.sourceUrl} onChangeText={changeUrl} autoCapitalize="none" autoCorrect={false} keyboardType="url" returnKeyType="go" onSubmitEditing={importLink} placeholder="https://…" placeholderTextColor={colors.taupe} style={styles.field} />
+          <TextAction label={importing ? 'reading the page…' : 'prefill plan details'} disabled={importing || saving || choosingPlace} onPress={importLink} />
+          {importing ? <ActivityIndicator color={colors.terracotta} /> : null}
+          {importResult ? <Text style={styles.help}>Filled {importResult.importedFields.length} details · review before sharing.</Text> : null}
+          {importResult?.warnings.map((warning) => <Text key={warning} selectable style={styles.help}>{warning}</Text>)}
+          <Toggle label="Friends sign up separately" value={draft.planKind === 'signup'} disabled={busy} onChange={(value) => update({ planKind: value ? 'signup' : 'gathering' })} />
+          <Text style={styles.help}>{draft.planKind === 'signup' ? 'Sign up with the organizer, then tell friends you’re in.' : 'A get-together. Friends can just say they’re going.'}</Text>
+          <TextAction label="hide link details" disabled={busy} onPress={() => { setImportOpen(false); setDetailsOpen(Boolean(draft.sourceUrl || draft.planKind === 'signup')); }} />
+        </Section> : null}
+        {existingPlan && !createSeparatePlan ? <Section title="already in Village">
+          <Text style={styles.rowLabel}>{existingPlan.activity.name}</Text><Text style={styles.help}>Join your friends on the existing plan, or share a different session.</Text>
+          <TextAction label="open existing plan →" onPress={() => { leaveAllowed.current = true; router.replace(`/plan/${existingPlan.activity.id}` as never); }} />
+          <TextAction label="this is a separate plan" onPress={() => setCreateSeparatePlan(true)} />
+        </Section> : null}
+
+        <View pointerEvents={busy ? 'none' : 'auto'} style={[styles.sections, importing && { opacity: 0.6 }]}>
+          <Section title="when">
+            {draft.date ? <>
+              <View style={styles.row}>
+                <PlanDateField label="START DATE" testID="plan-start-date" mode="date" date={draft.date} time={draft.time} timezone={draft.timezone} onChange={selectDate} />
+                {!draft.allDay ? <PlanDateField label="START TIME" testID="plan-start-time" mode="time" date={draft.date} time={draft.time} timezone={draft.timezone} onChange={(time) => update({ time })} /> : null}
+              </View>
+              {draft.endDate && !draft.repeating ? <View style={styles.row}>
+                {scheduleOpen || draft.endDate !== draft.date ? <PlanDateField label="END DATE" testID="plan-end-date" mode="date" date={draft.endDate} time={draft.endTime} timezone={draft.timezone} onChange={(endDate) => update({ endDate })} /> : null}
+                {!draft.allDay ? <PlanDateField label="END TIME" testID="plan-end-time" mode="time" date={draft.endDate} time={draft.endTime} timezone={draft.timezone} onChange={(endTime) => update({ endTime })} /> : null}
+                <TextAction label="remove end" onPress={() => update({ endDate: '', endTime: '' })} />
+              </View> : null}
+              {!draft.endDate && !draft.repeating ? <TextAction label="Add an end time" onPress={() => { const endTime = defaultEndTime(draft.time); update({ endDate: endTime <= draft.time ? shiftPlanDate(draft.date, 1) : draft.date, endTime }); }} /> : null}
+              <Toggle label="All-day plan" value={draft.allDay} onChange={(allDay) => update({ allDay, time: draft.time || '09:00' })} />
+              {!scheduleOpen ? <TextAction label="More than one day" onPress={() => setScheduleOpen(true)} /> : <View style={styles.scheduleOptions}>
+                <Toggle label="Repeats weekly" value={draft.repeating} onChange={(repeating) => { const endTime = draft.endTime || defaultEndTime(draft.time); update({ repeating, days: repeating ? [weekdayForDate(draft.date)] : [], endDate: repeating ? (draft.endDate && draft.endDate > draft.date ? draft.endDate : shiftPlanDate(draft.date, 28)) : draft.date, endTime: repeating && endTime <= draft.time ? '' : endTime }); }} />
+                {draft.repeating ? <>
+                  <View style={styles.weekdays}>{WEEKDAYS.map((day) => <Pressable key={day.value} accessibilityRole="checkbox" accessibilityLabel={`Repeat on ${day.name}`} accessibilityState={{ checked: draft.days.includes(day.value) }} onPress={() => update({ days: draft.days.includes(day.value) ? draft.days.filter((value) => value !== day.value) : [...draft.days, day.value] })} style={[styles.weekday, draft.days.includes(day.value) && styles.selected]}><Text style={[styles.rowLabel, draft.days.includes(day.value) && { color: colors.white }]}>{day.short}</Text></Pressable>)}</View>
+                  <View style={styles.row}><TextAction label="Weekdays" onPress={() => update({ days: [1, 2, 3, 4, 5] })} /><TextAction label="Every day" onPress={() => update({ days: [0, 1, 2, 3, 4, 5, 6] })} /></View>
+                  <View style={styles.row}>
+                    <PlanDateField label="LAST DATE" testID="plan-last-date" mode="date" date={draft.endDate || draft.date} time={draft.endTime} timezone={draft.timezone} onChange={(endDate) => update({ endDate })} />
+                    {!draft.allDay ? <PlanDateField label="END TIME" testID="plan-end-time" mode="time" date={draft.date} time={draft.endTime} timezone={draft.timezone} onChange={(endTime) => update({ endTime })} /> : null}
+                  </View>
+                  <Text style={styles.help}>Same hours on the selected days, through the last date. One response covers the whole plan.</Text>
+                </> : <>
+                  <Text style={styles.help}>For a trip, add the day it ends. For camp or weekly soccer, turn on repeats.</Text>
+                  {!draft.endDate ? <TextAction label="Add a last day" onPress={() => update({ endDate: shiftPlanDate(draft.date, 1), endTime: draft.time })} /> : null}
+                </>}
+              </View>}
+              {draft.timezone !== getDeviceTimeZone() ? <Text style={styles.help}>Times in {draft.timezone.replaceAll('_', ' ')}.</Text> : null}
+              <TextAction label="Date to decide" onPress={() => { ownedImportSchedule.current = true; setDraft(clearPlanDate); setScheduleOpen(false); }} />
+            </> : <View style={styles.rowBetween}>
+              <View style={{ flex: 1 }}><Text style={styles.rowLabel}>Date to decide</Text><Text style={styles.help}>A good idea can come first.</Text></View>
+              <TextAction label="Choose a day" onPress={() => update({ date: shiftPlanDate(planDateKey(new Date(), draft.timezone), 1), time: '17:00' })} />
+            </View>}
+          </Section>
+
+          <Section title="where">
+            <PlanPlacePicker name={draft.locationName} address={draft.locationAddress} disabled={busy} onBusyChange={setChoosingPlace} onChange={(locationName, locationAddress) => update({ locationName, locationAddress })} />
+          </Section>
+
+          <Section title="with">
+            <Pressable accessibilityRole="button" accessibilityLabel="Who can see this plan" accessibilityState={{ expanded: audienceOpen }} onPress={() => { Keyboard.dismiss(); setAudienceOpen(!audienceOpen); }} style={styles.rowBetween}>
+              <View style={styles.row}><Icon name={draft.visibility === 'invited' ? 'lock' : 'person.2'} size={20} color={colors.terracotta} /><Text style={styles.rowLabel}>{audienceLabel}</Text></View><Icon name="chevron.right" size={16} color={colors.taupe} />
+            </Pressable>
+            {draft.visibility === 'invited' && !audienceOpen ? <Text style={styles.help}>{connections.filter((row) => draft.invitedIds.includes(row.parent.id)).map((row) => row.parent.display_name).join(', ') || 'Choose the friends to invite.'}</Text> : null}
+            {audienceOpen ? <>
+              {AUDIENCES.map((audience) => <Pressable key={audience.value} accessibilityRole="radio" accessibilityLabel={audience.label} accessibilityState={{ selected: draft.visibility === audience.value }} onPress={() => { update({ visibility: audience.value }); if (audience.value !== 'invited') setAudienceOpen(false); }} style={styles.audience}>
+                <Icon name={audience.icon} size={20} color={colors.terracotta} /><View style={{ flex: 1 }}><Text style={styles.rowLabel}>{audience.label}</Text><Text style={styles.help}>{audience.detail}</Text></View>{draft.visibility === audience.value ? <Icon name="check.circle" size={20} color={colors.terracotta} /> : null}
+              </Pressable>)}
+              {draft.visibility === 'invited' ? <>
+                {loadingConnections ? <ActivityIndicator color={colors.terracotta} /> : connections.length ? <>
+                  {connections.length > 5 ? <TextInput accessibilityLabel="Find a friend to invite" value={connectionSearch} onChangeText={setConnectionSearch} placeholder="Find a friend" style={styles.field} /> : null}
+                  {visibleConnections.map((row) => <Pressable accessibilityRole="checkbox" accessibilityLabel={row.parent.display_name} accessibilityState={{ checked: draft.invitedIds.includes(row.parent.id) }} key={row.parent.id} onPress={() => toggleInvite(row.parent.id)} style={styles.audience}>
+                    <AvatarCircle initials={row.parent.avatar_initials} tone={row.parent.avatar_color} imageUrl={row.parent.avatar_url} size={36} /><Text style={[styles.rowLabel, { flex: 1 }]}>{row.parent.display_name}</Text><Icon name={draft.invitedIds.includes(row.parent.id) ? 'check.circle' : 'plus.circle'} size={21} color={colors.terracotta} />
+                  </Pressable>)}
+                  {!visibleConnections.length ? <Text style={styles.help}>No friends match that name.</Text> : null}
+                  <TextAction label="Done choosing friends" onPress={() => setAudienceOpen(false)} />
+                </> : <Text style={styles.help}>Connect with a friend in You, then invite them here.</Text>}
+              </> : null}
+            </> : null}
+            {loadError ? <><Text accessibilityRole="alert" style={styles.error}>{loadError}</Text><TextAction label="Retry loading connections" onPress={() => setLoadAttempt((value) => value + 1)} /></> : null}
+          </Section>
+
+          {detailsOpen ? <Section title="a few details">
+            <TextInput accessibilityLabel="Plan details" editable={!busy} value={draft.description} onChangeText={(description) => update({ description })} maxLength={600} multiline placeholder="What should friends know or bring?" placeholderTextColor={colors.taupe} style={[styles.field, styles.multiline]} />
+            {!importOpen ? <>
+              <Text style={styles.help}>A signup page, invitation, or useful link · optional</Text>
+              <TextInput accessibilityLabel="Supporting link" editable={!busy} value={draft.sourceUrl} onChangeText={changeUrl} autoCapitalize="none" autoCorrect={false} keyboardType="url" placeholder="https://…" placeholderTextColor={colors.taupe} style={styles.field} returnKeyType="done" onSubmitEditing={Keyboard.dismiss} />
+              <Toggle label="Friends sign up separately" value={draft.planKind === 'signup'} onChange={(value) => update({ planKind: value ? 'signup' : 'gathering' })} />
+              {draft.planKind === 'signup' ? <Text style={styles.help}>Friends sign up with the organizer, then let each other know.</Text> : null}
+            </> : null}
+            <TextAction label="hide extra details" onPress={() => setDetailsOpen(false)} />
+          </Section> : <TextAction label="Add a few details" onPress={() => setDetailsOpen(true)} />}
+        </View>
+      </FormScrollView>
+      <View style={styles.footer}>
+        {error ? <Text selectable accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
+        <Text style={styles.footerNote}>{choosingPlace ? 'Choose a place or cancel the search to continue' : `${draft.date ? '' : 'Date to decide · '}${audienceLabel}${draft.planKind === 'signup' ? ' · Signup activity' : ''}`}</Text>
+        <TerracottaButton label={saving ? 'saving…' : editing ? 'save changes →' : 'share plan →'} accessibilityLabel={editing ? 'Save changes' : 'Share plan'} onPress={save} disabled={choosingPlace || busy || Array.from(draft.name.trim()).length < 2 || Boolean(existingPlan && !createSeparatePlan)} fullWidth />
+      </View>
+    </KeyboardFrame>
+  </SafeAreaView>;
 }
 
-function SecondaryButton({ label, loading, disabled = false, onPress }: { label: string; loading?: boolean; disabled?: boolean; onPress: () => void }) {
-  return <Pressable accessibilityRole="button" disabled={loading || disabled} onPress={onPress} style={styles.secondaryButton}>{loading ? <ActivityIndicator size="small" color={colors.terracotta} /> : <Text style={styles.secondaryText}>{label}</Text>}</Pressable>;
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  return <View style={styles.section}><Text style={styles.sectionTitle}>{title}</Text>{children}</View>;
 }
-
-function nextFriendlyStart(): Date {
-  const next = new Date();
-  next.setDate(next.getDate() + 1);
-  next.setHours(10, 0, 0, 0);
-  return next;
+function TextAction({ label, disabled = false, onPress }: { label: string; disabled?: boolean; onPress: () => void }) {
+  return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled }} disabled={disabled} onPress={() => { Keyboard.dismiss(); onPress(); }} style={styles.textAction}><Text style={[styles.actionText, disabled && { opacity: 0.5 }]}>{label}</Text></Pressable>;
 }
-
-function formatDateInput(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
+function Toggle({ label, value, disabled = false, onChange }: { label: string; value: boolean; disabled?: boolean; onChange: (value: boolean) => void }) {
+  return <View style={styles.rowBetween}><Text style={[styles.rowLabel, { flex: 1 }]}>{label}</Text><Switch accessibilityLabel={label} disabled={disabled} value={value} onValueChange={(next) => { Keyboard.dismiss(); onChange(next); }} trackColor={{ true: colors.terracotta }} /></View>;
 }
-
-function formatTimeInput(date: Date): string {
-  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+function defaultEndTime(time: string): string {
+  const hours = Number(time.split(':')[0] || 9);
+  return `${String((hours + 2) % 24).padStart(2, '0')}:${time.split(':')[1] || '00'}`;
 }
-
-function dateFromInputs(dateValue: string, timeValue: string): Date {
-  const dateMatch = dateValue.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  const timeMatch = timeValue.match(/^(\d{2}):(\d{2})$/);
-  if (!dateMatch) return nextFriendlyStart();
-  return new Date(
-    Number(dateMatch[1]),
-    Number(dateMatch[2]) - 1,
-    Number(dateMatch[3]),
-    timeMatch ? Number(timeMatch[1]) : 9,
-    timeMatch ? Number(timeMatch[2]) : 0,
-  );
-}
-
-function defaultEndTime(startTime: string): string {
-  const match = startTime.match(/^(\d{2}):(\d{2})$/);
-  if (!match) return '15:00';
-  const minutes = (Number(match[1]) * 60 + Number(match[2]) + 180) % (24 * 60);
-  return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
-}
-
-function participantCount(proof: ActivitySocialProof): number {
-  const responses = proof.goingConnections.length
-    + proof.interestedConnections.length
-    + proof.outConnections.length
-    + (proof.myState ? 1 : 0);
-  // The creator is already coordinating even before they add an RSVP.
-  return Math.max(1, responses);
-}
-
-function parseLocalDateTime(dateValue: string, timeValue: string, allDay: boolean): string {
-  const dateMatch = dateValue.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!dateMatch) throw new Error('Use YYYY-MM-DD for plan dates.');
-  const timeMatch = (allDay ? '00:00' : timeValue.trim()).match(/^(\d{2}):(\d{2})$/);
-  if (!timeMatch) throw new Error('Use 24-hour HH:MM for plan times.');
-  const year = Number(dateMatch[1]);
-  const month = Number(dateMatch[2]);
-  const day = Number(dateMatch[3]);
-  const hour = Number(timeMatch[1]);
-  const minute = Number(timeMatch[2]);
-  const value = new Date(year, month - 1, day, hour, minute, 0, 0);
-  if (value.getFullYear() !== year || value.getMonth() !== month - 1 || value.getDate() !== day || value.getHours() !== hour || value.getMinutes() !== minute) {
-    throw new Error('Choose a valid date and time.');
-  }
-  return value.toISOString();
-}
-
 const styles = {
-  loading: { flex: 1, backgroundColor: colors.cream, alignItems: 'center', justifyContent: 'center' } as const,
-  header: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 12, flexDirection: 'row', alignItems: 'center', gap: 12 } as const,
-  iconButton: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.rule, alignItems: 'center', justifyContent: 'center' } as const,
-  eyebrow: { fontFamily: fonts.monoBold, fontSize: 9.5, letterSpacing: 0.7, color: colors.taupe } as const,
-  title: { fontFamily: fonts.serifRegular, fontSize: 30, lineHeight: 33, color: colors.dark } as const,
-  content: { paddingHorizontal: 16, paddingBottom: 50, gap: 16 } as const,
-  section: { padding: 16, gap: 11, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.rule, borderRadius: radii.lg } as const,
-  sectionTitle: { fontFamily: fonts.serifRegular, fontSize: 26, lineHeight: 29, color: colors.dark } as const,
-  help: { fontFamily: fonts.sans, fontSize: 11.5, lineHeight: 17, color: colors.taupe } as const,
-  field: { minHeight: 46, paddingHorizontal: 12, borderRadius: radii.md, borderWidth: 1, borderColor: colors.rule, backgroundColor: colors.cream, fontFamily: fonts.sansSemi, fontSize: 13.5, color: colors.dark } as const,
-  multiline: { minHeight: 100, paddingTop: 12, textAlignVertical: 'top' } as const,
-  pickerField: { minHeight: 46, paddingHorizontal: 9, borderRadius: radii.md, borderWidth: 1, borderColor: colors.rule, backgroundColor: colors.cream, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 } as const,
-  androidPickerButton: { minHeight: 44, flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6 } as const,
-  androidPickerValue: { fontFamily: fonts.sansSemi, fontSize: 13.5, color: colors.dark } as const,
-  addEndButton: { minHeight: 44, paddingHorizontal: 12, borderRadius: radii.md, borderWidth: 1, borderColor: colors.rule, backgroundColor: colors.cream, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 } as const,
-  secondaryButton: { minHeight: 44, borderRadius: radii.md, borderWidth: 1, borderColor: colors.rule, backgroundColor: colors.cream, alignItems: 'center', justifyContent: 'center' } as const,
-  secondaryText: { fontFamily: fonts.sansExtra, fontSize: 12, color: colors.terracotta } as const,
-  importSuccess: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: radii.md, borderWidth: 1, borderColor: colors.sage, backgroundColor: colors.sageSoft } as const,
-  importSuccessTitle: { fontFamily: fonts.sansExtra, fontSize: 12.5, color: colors.dark } as const,
-  importWarning: { flexDirection: 'row', alignItems: 'flex-start', gap: 9, padding: 11, borderRadius: radii.md, borderWidth: 1, borderColor: colors.rule, backgroundColor: colors.cream } as const,
-  existingPlan: { gap: 9, padding: 13, borderRadius: radii.md, borderWidth: 1.5, borderColor: colors.terracotta, backgroundColor: '#FFF6EF' } as const,
-  existingTitle: { fontFamily: fonts.serifRegular, fontSize: 22, lineHeight: 25, color: colors.dark } as const,
-  separateText: { fontFamily: fonts.sansBold, fontSize: 11, color: colors.taupe, textDecorationLine: 'underline' } as const,
-  toggleRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingTop: 4 } as const,
-  rowLabel: { fontFamily: fonts.sansExtra, fontSize: 13.5, color: colors.dark } as const,
-  audienceCard: { flexDirection: 'row', alignItems: 'center', gap: 11, padding: 12, borderWidth: 1, borderColor: colors.rule, borderRadius: radii.md, backgroundColor: colors.cream } as const,
-  audienceSelected: { borderColor: colors.terracotta, backgroundColor: '#FFF6EF' } as const,
-  audienceIcon: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' } as const,
-  connectionRow: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, borderWidth: 1, borderColor: colors.rule, borderRadius: radii.md, backgroundColor: colors.cream } as const,
-  error: { fontFamily: fonts.sansSemi, fontSize: 12, lineHeight: 18, color: colors.terracotta } as const,
-};
+  screen: { flex: 1, backgroundColor: colors.cream },
+  center: { flex: 1, backgroundColor: colors.cream, alignItems: 'center', justifyContent: 'center', padding: spacing.xl, gap: spacing.lg },
+  header: { paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  back: { width: 44, height: 44, borderRadius: radii.pill, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.rule, alignItems: 'center', justifyContent: 'center' },
+  title: { fontFamily: fonts.serifRegular, fontSize: 29, color: colors.dark },
+  content: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xl },
+  intro: { gap: spacing.sm, paddingBottom: spacing.xs },
+  sections: { gap: spacing.md },
+  section: { padding: spacing.md, gap: spacing.sm, backgroundColor: colors.surface, borderRadius: radii.lg, borderColor: colors.rule, borderWidth: 1 },
+  sectionTitle: { fontFamily: fonts.serifRegular, fontSize: 26, lineHeight: 30, color: colors.dark },
+  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  rowBetween: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
+  rowLabel: { fontFamily: fonts.sansBold, fontSize: 13, color: colors.dark },
+  field: { minHeight: 48, paddingHorizontal: spacing.md, borderRadius: radii.md, borderWidth: 1, borderColor: colors.rule, backgroundColor: colors.cream, fontFamily: fonts.sansSemi, fontSize: 14, color: colors.dark },
+  nameField: { flex: 1, fontSize: 16, backgroundColor: colors.surface },
+  multiline: { minHeight: 96, paddingTop: spacing.md, paddingBottom: spacing.md, textAlignVertical: 'top' },
+  emojiButton: { minWidth: 44, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
+  emoji: { fontSize: 28 },
+  emojiOptions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
+  help: { fontFamily: fonts.sans, fontSize: 12, lineHeight: 18, color: colors.brownMid },
+  textAction: { minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing.xs },
+  actionText: { fontFamily: fonts.sansBold, fontSize: 12, color: colors.terracotta },
+  scheduleOptions: { gap: spacing.sm, borderTopWidth: 1, borderTopColor: colors.rule, paddingTop: spacing.sm },
+  weekdays: { flexDirection: 'row', gap: spacing.xs },
+  weekday: { flex: 1, minHeight: 44, borderRadius: radii.sm, borderWidth: 1, borderColor: colors.rule, backgroundColor: colors.cream, alignItems: 'center', justifyContent: 'center' },
+  selected: { backgroundColor: colors.terracotta, borderColor: colors.terracotta },
+  audience: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.sm, borderTopColor: colors.rule, borderTopWidth: 1 },
+  footer: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.sm, gap: spacing.sm, borderTopWidth: 1, borderTopColor: colors.rule, backgroundColor: colors.cream },
+  footerNote: { fontFamily: fonts.sans, fontSize: 11, color: colors.brownMid, textAlign: 'center' },
+  error: { fontFamily: fonts.sansSemi, fontSize: 12, lineHeight: 18, color: colors.terracotta },
+} as const;

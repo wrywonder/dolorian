@@ -1,4 +1,4 @@
-import type { InteractionState } from '@/types';
+import type { InteractionState, PlanKind } from '@/types';
 
 export type PlanRsvpCopy = {
   prompt: string;
@@ -14,20 +14,20 @@ export type PlanRsvpCopy = {
 };
 
 const informalCopy: PlanRsvpCopy = {
-  prompt: 'does this work for you?',
+  prompt: 'see you there?',
   going: 'Going',
-  interested: 'Interested',
+  interested: 'Maybe',
   out: 'Can’t make it',
   goingGroup: 'going',
-  interestedGroup: 'interested',
+  interestedGroup: 'maybe',
   outGroup: 'can’t make it',
   detailsLabel: 'Your details · optional',
-  detailsHelp: 'Add whichever specifics matter to your family—kids, days, timing, pickup, or anything else.',
+  detailsHelp: 'Who’s coming, what you’re bringing, or anything friends should know.',
   detailsPlaceholder: 'Leo · Saturday afternoon · bringing snacks',
 };
 
 const registrationCopy: PlanRsvpCopy = {
-  prompt: 'what’s your registration status?',
+  prompt: 'joining this one?',
   going: 'Signed up',
   interested: 'Considering',
   out: 'Not this time',
@@ -39,12 +39,12 @@ const registrationCopy: PlanRsvpCopy = {
   detailsPlaceholder: 'Leo · Aug 17–21 · 8:45–3 · ButterFly group',
 };
 
-export function planRsvpCopy(hasExternalListing: boolean): PlanRsvpCopy {
-  return hasExternalListing ? registrationCopy : informalCopy;
+export function planRsvpCopy(kind: PlanKind): PlanRsvpCopy {
+  return kind === 'signup' ? registrationCopy : informalCopy;
 }
 
-export function planStateLabel(state: InteractionState | null, hasExternalListing: boolean): string {
-  const copy = planRsvpCopy(hasExternalListing);
+export function planStateLabel(state: InteractionState | null, kind: PlanKind): string {
+  const copy = planRsvpCopy(kind);
   switch (state) {
     case 'going':
     case 'attended':
@@ -54,6 +54,6 @@ export function planStateLabel(state: InteractionState | null, hasExternalListin
     case 'out':
       return copy.out;
     default:
-      return hasExternalListing ? 'Add my status →' : "I'm in →";
+      return 'Respond →';
   }
 }

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { InteractionState, UUID } from '@/types';
+import type { InteractionState, PlanKind, UUID } from '@/types';
 
 /**
  * Imperative API for the Interested / Going action sheet.
@@ -11,7 +11,7 @@ export type InterestSheetPayload = {
   activityId: UUID;
   activityName: string;
   emoji: string | null;
-  hasExternalListing: boolean;
+  planKind: PlanKind;
   currentState: InteractionState | null;
   onChanged: (next: InteractionState | null) => void;
 };

@@ -8,6 +8,9 @@ export type ActivitySource =
   | 'participant_added';
 
 export type PlanVisibility = 'public' | 'connections' | 'invited';
+export type PlanKind = 'gathering' | 'signup';
+export type PlanScheduleKind = 'once' | 'weekly';
+export type PlanWeekday = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 
 export type Activity = {
   id: UUID;
@@ -29,6 +32,12 @@ export type Activity = {
   external_source_key: string | null;
   cover_image_url: string | null;
   all_day: boolean;
+  /** Absent on legacy plans; only those plans infer signup intent from a URL. */
+  plan_kind?: PlanKind | null;
+  /** Legacy null schedules retain their original contiguous date range. */
+  schedule_kind?: PlanScheduleKind | null;
+  schedule_days?: PlanWeekday[] | null;
+  schedule_timezone?: string | null;
   updated_at: Timestamp;
   cancelled_at: Timestamp | null;
   created_at: Timestamp;
@@ -67,12 +76,16 @@ export type PlanParticipant = {
 };
 
 export type PlanInput = {
+  plan_kind: PlanKind;
   name: string;
   description: string;
   emoji: string;
-  starts_at: Timestamp;
+  starts_at: Timestamp | null;
   ends_at: Timestamp | null;
   all_day: boolean;
+  schedule_kind: PlanScheduleKind;
+  schedule_days: PlanWeekday[];
+  schedule_timezone: string;
   visibility: PlanVisibility;
   invited_parent_ids: UUID[];
   location_name: string;
@@ -80,6 +93,16 @@ export type PlanInput = {
   external_url: string;
   external_source_key: string;
   cover_image_url: string;
+};
+
+/** Safe identity attached only after the server verifies access to the plan. */
+export type PlanSharedBy = {
+  parent_id: UUID;
+  display_name: string;
+  avatar_color: AvatarColor;
+  avatar_initials: string;
+  avatar_url: string | null;
+  profile_visible: boolean;
 };
 
 export type PlanLinkPreview = {

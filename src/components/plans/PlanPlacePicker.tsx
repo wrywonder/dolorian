@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Keyboard, Pressable, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Keyboard, Modal, Pressable, Text, TextInput, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Crypto from 'expo-crypto';
 import { Icon } from '@/components/ui';
+import { KeyboardFrame } from '@/components/ui/KeyboardFrame';
+import { FormScrollView } from '@/components/ui/FormScrollView';
 import { colors, fonts, radii, spacing } from '@/lib/constants';
 import { createLatestRequest } from '@/lib/latest-request';
 import { getPlaceDetails, searchPlaces, type PlaceSuggestion } from '@/lib/place-search';
@@ -21,7 +24,18 @@ export function PlanPlacePicker({ name, address, disabled, onChange, onBusyChang
   const [requests] = useState(createLatestRequest);
   const session = useRef('');
   const abort = useRef<AbortController | null>(null);
+  const searchInput = useRef<TextInput>(null);
   const cancel = () => { requests.invalidate(); abort.current?.abort(); };
+  const closeSearch = (enterManually = false) => {
+    cancel(); setSelecting(false); setOpen(false);
+    if (enterManually) setManual(true);
+    Keyboard.dismiss();
+  };
+
+  // A place search is an unfinished form step. In particular, the sticky Share
+  // action must not accept a tap meant for a result near the keyboard boundary.
+  useEffect(() => { onBusyChange(open || selecting); }, [open, selecting, onBusyChange]);
+  useEffect(() => () => onBusyChange(false), [onBusyChange]);
 
   useEffect(() => {
     if (!open || query.trim().length < 2 || disabled) { setSuggestions([]); setLoading(false); return; }
@@ -47,7 +61,6 @@ export function PlanPlacePicker({ name, address, disabled, onChange, onBusyChang
     const controller = new AbortController();
     abort.current = controller;
     setSelecting(true);
-    onBusyChange(true);
     setError(null);
     try {
       const place = await getPlaceDetails(suggestion.id, session.current, controller.signal);
@@ -59,24 +72,31 @@ export function PlanPlacePicker({ name, address, disabled, onChange, onBusyChang
     } catch (cause) {
       if (current()) setError(readableError(cause, 'Could not load this place.'));
     } finally {
-      // The details call terminates a Google search session, including failures.
-      session.current = Crypto.randomUUID();
-      if (current()) { setSelecting(false); onBusyChange(false); }
+      // Only this search owns its token. A canceled call may settle after the
+      // parent has reopened search and started a different provider session.
+      if (current()) { session.current = Crypto.randomUUID(); setSelecting(false); }
     }
   };
 
   return (
     <View style={{ gap: spacing.sm }}>
-      <Text style={styles.label}>PLACE · OPTIONAL</Text>
-      {!open ? <Pressable accessibilityRole="button" accessibilityLabel={name ? `Change place, ${name}` : 'Find a place'} disabled={disabled} onPress={() => {
-        session.current = Crypto.randomUUID(); setQuery(''); setError(null); setOpen(true);
+      <Pressable accessibilityRole="button" accessibilityLabel={name ? `Change place, ${name}` : 'Find a place'} disabled={disabled} onPress={() => {
+        Keyboard.dismiss(); session.current = Crypto.randomUUID(); setQuery(''); setError(null); setOpen(true);
       }} style={styles.field}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
           <Icon name={name ? 'map.pin' : 'search'} size={18} color={colors.terracotta} />
           <Text style={{ flex: 1, fontFamily: fonts.sansBold, fontSize: 14, color: name ? colors.dark : colors.terracotta }}>{name || 'Find a park, café, or address'}</Text>
         </View>
-      </Pressable> : <View style={styles.results}>
-        <TextInput autoFocus accessibilityLabel="Search plan places" value={query} maxLength={200} editable={!disabled && !selecting} placeholder="Place name + city" placeholderTextColor={colors.taupe} autoCorrect={false} returnKeyType="search" onSubmitEditing={Keyboard.dismiss} onChangeText={(value) => { cancel(); setSuggestions([]); setQuery(value); }} style={styles.field} />
+      </Pressable>
+      <Modal visible={open} animationType="slide" presentationStyle="fullScreen" onRequestClose={() => closeSearch()} onShow={() => searchInput.current?.focus()}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: colors.cream }}>
+          <KeyboardFrame accessibilityViewIsModal>
+            <View style={styles.searchHeader}>
+              <Text style={styles.searchTitle}>find a place</Text>
+              <Pressable accessibilityRole="button" accessibilityLabel="cancel search" onPress={() => closeSearch()} style={styles.action}><Text style={styles.actionText}>cancel</Text></Pressable>
+            </View>
+            <FormScrollView contentContainerStyle={styles.results}>
+        <TextInput ref={searchInput} accessibilityLabel="Search plan places" value={query} maxLength={200} editable={!disabled && !selecting} placeholder="Place name + city" placeholderTextColor={colors.taupe} autoCorrect={false} returnKeyType="search" onSubmitEditing={Keyboard.dismiss} onChangeText={(value) => { cancel(); setSuggestions([]); setQuery(value); }} style={styles.field} />
         <Text style={styles.help}>Add the city to find the right spot.</Text>
         {loading || selecting ? <ActivityIndicator accessibilityLabel={selecting ? 'Loading place address' : 'Searching places'} color={colors.terracotta} /> : null}
         {!loading && !error && query.trim().length >= 2 && suggestions.length === 0 ? <Text style={styles.help}>No matches yet. Add the city, or enter the place yourself.</Text> : null}
@@ -86,22 +106,25 @@ export function PlanPlacePicker({ name, address, disabled, onChange, onBusyChang
         </Pressable>) : null}
         {/* Compact attribution follows Google's text-attribution specification. */}
         <Text style={{ fontFamily: fonts.sans, fontSize: 12, color: '#5E5E5E', textAlign: 'right' }}>Google Maps</Text>
-        <Pressable accessibilityRole="button" disabled={selecting} onPress={() => { cancel(); setOpen(false); setManual(true); Keyboard.dismiss(); }} style={styles.action}><Text style={styles.actionText}>enter the place myself</Text></Pressable>
-        <Pressable accessibilityRole="button" disabled={selecting} onPress={() => { cancel(); setOpen(false); Keyboard.dismiss(); }} style={styles.action}><Text style={styles.actionText}>cancel search</Text></Pressable>
-      </View>}
+        <Pressable accessibilityRole="button" onPress={() => closeSearch(true)} style={styles.action}><Text style={styles.actionText}>enter the place myself</Text></Pressable>
+            </FormScrollView>
+          </KeyboardFrame>
+        </SafeAreaView>
+      </Modal>
       {!open ? <>
         {manual ? <TextInput accessibilityLabel="Place name" editable={!disabled} value={name} onChangeText={(value) => onChange(value, address)} maxLength={200} placeholder="Our house, a favorite park…" placeholderTextColor={colors.taupe} style={styles.field} /> : null}
-        <TextInput accessibilityLabel="Address or meetup note" editable={!disabled} value={address} onChangeText={(value) => onChange(name, value)} maxLength={400} placeholder="Address or meetup note · optional" placeholderTextColor={colors.taupe} style={styles.field} />
-        <Pressable accessibilityRole="button" disabled={disabled} onPress={() => setManual((value) => !value)} style={styles.action}><Text style={styles.actionText}>{manual ? 'hide manual name field' : 'or enter the place myself'}</Text></Pressable>
+        {name || manual || address ? <TextInput accessibilityLabel="Address or meetup note" editable={!disabled} value={address} onChangeText={(value) => onChange(name, value)} maxLength={400} placeholder="Address or meetup note · optional" placeholderTextColor={colors.taupe} style={styles.field} /> : null}
+        <Pressable accessibilityRole="button" disabled={disabled} onPress={() => { setManual((value) => !value); Keyboard.dismiss(); }} style={styles.action}><Text style={styles.actionText}>{manual ? 'Done editing place' : 'or enter the place myself'}</Text></Pressable>
       </> : null}
     </View>
   );
 }
 const styles = {
-  label: { fontFamily: fonts.monoBold, fontSize: 10, color: colors.brownMid },
   field: { minHeight: 48, padding: spacing.md, borderRadius: radii.md, backgroundColor: colors.surface, borderColor: colors.rule, borderWidth: 1, color: colors.dark, fontFamily: fonts.sansSemi, fontSize: 14 },
   help: { fontFamily: fonts.sans, fontSize: 12, lineHeight: 18, color: colors.brownMid, paddingTop: spacing.xs },
-  results: { padding: spacing.sm, borderRadius: radii.lg, borderColor: colors.rule, borderWidth: 1, backgroundColor: colors.surface, gap: spacing.sm },
+  searchHeader: { minHeight: 56, paddingHorizontal: spacing.lg, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  searchTitle: { fontFamily: fonts.serifRegular, fontSize: 28, color: colors.dark },
+  results: { padding: spacing.lg, gap: spacing.sm },
   suggestion: { minHeight: 56, paddingVertical: spacing.sm, paddingHorizontal: spacing.sm, borderBottomColor: colors.rule, borderBottomWidth: 1 },
   action: { minHeight: 44, justifyContent: 'center' },
   actionText: { fontFamily: fonts.sansBold, fontSize: 12, color: colors.terracotta },

@@ -14,6 +14,7 @@ type Variant = 'primary' | 'compact';
 
 type TerracottaButtonProps = {
   label: string;
+  accessibilityLabel?: string;
   onPress?: () => void;
   iconLeft?: React.ReactNode;
   iconRight?: React.ReactNode;
@@ -37,6 +38,7 @@ type TerracottaButtonProps = {
  */
 export function TerracottaButton({
   label,
+  accessibilityLabel,
   onPress,
   iconLeft,
   iconRight,
@@ -85,6 +87,9 @@ export function TerracottaButton({
     <View style={[{ position: 'relative', alignSelf: fullWidth ? 'stretch' : 'flex-start' }, style]}>
       <Animated.View style={animatedStyle}>
         <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={accessibilityLabel ?? label}
+          accessibilityState={{ disabled }}
           onPress={handlePress}
           onPressIn={onPressIn}
           onPressOut={onPressOut}

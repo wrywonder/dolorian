@@ -14,14 +14,14 @@ import { KeyboardFrame } from '@/components/ui/KeyboardFrame';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { format } from 'date-fns';
 import { AvatarCircle, Icon, PhotoTile, TerracottaButton } from '@/components/ui';
-import { colors, fonts, radii, type AvatarTone } from '@/lib/constants';
+import { colors, fonts, radii, spacing, type AvatarTone } from '@/lib/constants';
 import { data } from '@/lib/data';
 import { createLatestRequest } from '@/lib/latest-request';
 import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
 import { readableError } from '@/lib/error-message';
-import { planIsUpcoming } from '@/lib/plan-dates';
+import { planIsUpcoming, planScheduleLabel } from '@/lib/plan-dates';
+import { getPlanKind } from '@/lib/plan-intent';
 import { planRsvpCopy } from '@/lib/plan-rsvp-copy';
 import type { ActivitySocialProof, InteractionState, PlanParticipant, UUID } from '@/types';
 
@@ -40,6 +40,7 @@ export function PlanDetailScreen({ id }: PlanDetailScreenProps) {
   const [saving, setSaving] = useState(false);
   const [rsvpNote, setRsvpNote] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [showOut, setShowOut] = useState(false);
 
   const load = useCallback(async () => {
     const isCurrent = requests.begin();
@@ -141,13 +142,27 @@ export function PlanDetailScreen({ id }: PlanDetailScreenProps) {
     );
   }
 
-  const { activity, venue, goingConnections, interestedConnections, outConnections, myState } = proof;
+  const { activity, venue, shared_by, goingConnections, interestedConnections, outConnections, myState } = proof;
   const location = activity.location_name ?? venue?.name ?? null;
   const imageUrl = activity.cover_image_url ?? venue?.image_url ?? null;
   const isOwner = activity.created_by === myId;
-  const state = myState === 'going' || myState === 'interested' || myState === 'out' ? myState : null;
+  const state = myState === 'attended' ? 'going' : myState === 'going' || myState === 'interested' || myState === 'out' ? myState : null;
   const noteChanged = rsvpNote.trim() !== (proof.myRsvpNote?.trim() ?? '');
-  const rsvpCopy = planRsvpCopy(Boolean(activity.external_url));
+  const planKind = getPlanKind(activity);
+  const isSignup = planKind === 'signup';
+  const rsvpCopy = planRsvpCopy(planKind);
+  const openListing = () => {
+    if (!activity.external_url || !/^https?:\/\//i.test(activity.external_url)) {
+      setError('This listing link is unavailable.');
+      return;
+    }
+    Linking.openURL(activity.external_url).catch(() => setError('Could not open that listing. Please try again.'));
+  };
+  const openDirections = () => {
+    if (!activity.location_address?.trim()) return;
+    const query = [location, activity.location_address].filter(Boolean).join(', ');
+    Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(query)}`).catch(() => setError('Could not open directions. You can copy the address and try your maps app.'));
+  };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.cream }} edges={['top', 'bottom']}>
@@ -173,40 +188,32 @@ export function PlanDetailScreen({ id }: PlanDetailScreenProps) {
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.terracotta} />}
         >
           {error ? <View style={styles.retryNotice}><Text selectable accessibilityRole="alert" style={styles.error}>{error}</Text><Pressable accessibilityRole="button" disabled={saving} onPress={onRefresh} style={styles.retryButton}><Text style={styles.clearText}>try again →</Text></Pressable></View> : null}
-          <View style={styles.hero}>
-            {imageUrl ? (
-              <Image source={{ uri: imageUrl }} contentFit="cover" transition={180} style={{ width: '100%', height: 250 }} />
-            ) : (
-              <PhotoTile tone={toneForActivity(activity.emoji)} height={120} />
-            )}
-            <View style={styles.heroBadges}>
-              <Badge label={visibilityLabel(activity.visibility)} />
-              {activity.cancelled_at ? <Badge label="CANCELLED" alert /> : null}
-            </View>
-          </View>
-
           <View style={styles.titleBlock}>
-            {activity.emoji ? <Text style={styles.emoji}>{activity.emoji}</Text> : null}
+            {imageUrl ? <Image source={{ uri: imageUrl }} contentFit="cover" transition={180} style={styles.compactImage} /> : <PhotoTile tone={toneForActivity(activity.emoji)} height={8} radius={radii.sm} />}
+            <View style={styles.summaryTop}>
+              <View style={styles.badges}><Badge label={visibilityLabel(activity.visibility)} />{activity.cancelled_at ? <Badge label="CANCELLED" alert /> : null}</View>
+              {activity.emoji ? <Text accessibilityElementsHidden importantForAccessibility="no" style={styles.emoji}>{activity.emoji}</Text> : null}
+            </View>
             <Text selectable style={styles.title}>{activity.name}</Text>
-            <Text style={styles.date}>{formatPlanDate(activity.starts_at, activity.ends_at, activity.all_day)}</Text>
+            <Text selectable style={styles.date}>{planScheduleLabel(activity)}</Text>
             {location ? <InfoLine icon="map.pin" text={location} /> : null}
-            {activity.location_address ? <Text selectable style={styles.address}>{activity.location_address}</Text> : null}
-            {activity.description ? <Text selectable style={styles.description}>{activity.description}</Text> : null}
-            {activity.external_url ? (
-              <Pressable accessibilityRole="link" onPress={() => {
-                Linking.openURL(activity.external_url!).catch(() => setError('Could not open that listing. Please try again.'));
-              }} style={styles.linkButton}>
-                <Icon name="arrow.right" size={16} color={colors.terracotta} />
-                <Text style={styles.linkText}>open original listing</Text>
-              </Pressable>
-            ) : null}
+            {activity.location_address ? <View style={styles.addressRow}><Text selectable style={styles.address}>{activity.location_address}</Text><Pressable accessibilityRole="link" accessibilityLabel="Open directions" onPress={openDirections} style={styles.directionsButton}><Text style={styles.linkText}>directions ↗</Text></Pressable></View> : null}
+            {shared_by ? <Pressable accessibilityRole="button" accessibilityLabel={`Shared by ${shared_by.display_name}`} disabled={!shared_by.profile_visible} onPress={() => router.push(`/profile/${shared_by.parent_id}` as never)} style={styles.sharedByRow}>
+              <AvatarCircle initials={shared_by.avatar_initials} tone={shared_by.avatar_color} imageUrl={shared_by.avatar_url} size={30} />
+              <Text style={styles.sharedByText}>Shared by {isOwner ? 'you' : shared_by.display_name}</Text>
+            </Pressable> : null}
           </View>
 
           <View style={styles.section}>
-            <Text style={styles.eyebrow}>YOUR RSVP</Text>
+            <Text style={styles.eyebrow}>{isSignup ? 'YOUR SIGNUP STATUS' : 'YOUR RESPONSE'}</Text>
             <Text style={styles.sectionTitle}>{activity.cancelled_at ? 'this plan was cancelled' : rsvpCopy.prompt}</Text>
             {!activity.cancelled_at ? (
               <>
+                {isSignup ? <View style={{ gap: spacing.sm }}>
+                  <Text style={styles.helpLeft}>Sign up with the organizer, then let friends know. Your response here doesn’t register you.</Text>
+                  {activity.external_url ? <Pressable accessibilityRole="link" onPress={openListing} style={styles.signupButton}><Text style={styles.signupButtonText}>open signup page ↗</Text></Pressable> : null}
+                </View> : null}
+                {activity.schedule_kind === 'weekly' ? <Text style={styles.helpLeft}>One response for the whole plan. Add your team, camp week or any exceptions below.</Text> : null}
                 <View style={styles.rsvpRow}>
                   <RsvpButton label={rsvpCopy.going} emoji="✓" selected={state === 'going'} disabled={saving} onPress={() => setRsvp('going')} />
                   <RsvpButton label={rsvpCopy.interested} emoji="♡" selected={state === 'interested'} disabled={saving} onPress={() => setRsvp('interested')} />
@@ -248,9 +255,22 @@ export function PlanDetailScreen({ id }: PlanDetailScreenProps) {
             </View>
           ) : null}
 
-          <ParticipantSection title={rsvpCopy.going} people={goingConnections} empty={activity.external_url ? 'No other families have marked themselves signed up yet.' : 'No one else has said they’re going yet.'} />
-          <ParticipantSection title={rsvpCopy.interested} people={interestedConnections} empty="No one else is watching this one yet." />
-          {outConnections.length ? <ParticipantSection title={rsvpCopy.out} people={outConnections} empty="" subdued /> : null}
+          {goingConnections.length ? <ParticipantSection title={`Other parents · ${rsvpCopy.goingGroup}`} people={goingConnections} /> : null}
+          {interestedConnections.length ? <ParticipantSection title={`Other parents · ${rsvpCopy.interestedGroup}`} people={interestedConnections} /> : null}
+          {!goingConnections.length && !interestedConnections.length ? <View style={styles.section}>
+            <Text style={styles.eyebrow}>WHO’S IN?</Text>
+            <Text style={styles.helpLeft}>No other parents are in yet.</Text>
+          </View> : null}
+          {outConnections.length ? <View>
+            <Pressable accessibilityRole="button" accessibilityState={{ expanded: showOut }} onPress={() => setShowOut((open) => !open)} style={styles.outToggle}><Text style={styles.clearText}>{outConnections.length} {outConnections.length === 1 ? 'parent' : 'parents'} · {rsvpCopy.out.toLowerCase()} {showOut ? '↑' : '↓'}</Text></Pressable>
+            {showOut ? <ParticipantSection title={rsvpCopy.out} people={outConnections} subdued /> : null}
+          </View> : null}
+
+          {activity.description || (!isSignup && activity.external_url) ? <View style={styles.section}>
+            <Text style={styles.eyebrow}>A FEW DETAILS</Text>
+            {activity.description ? <Text selectable style={styles.description}>{activity.description}</Text> : null}
+            {!isSignup && activity.external_url ? <Pressable accessibilityRole="link" onPress={openListing} style={styles.linkButton}><Icon name="link" size={16} color={colors.terracotta} /><Text style={styles.linkText}>open shared link ↗</Text></Pressable> : null}
+          </View> : null}
 
           {isOwner && !activity.cancelled_at ? (
             <Pressable disabled={saving} onPress={confirmCancel} style={styles.cancelButton}>
@@ -263,11 +283,11 @@ export function PlanDetailScreen({ id }: PlanDetailScreenProps) {
   );
 }
 
-function ParticipantSection({ title, people, empty, subdued = false }: { title: string; people: PlanParticipant[]; empty: string; subdued?: boolean }) {
+function ParticipantSection({ title, people, subdued = false }: { title: string; people: PlanParticipant[]; subdued?: boolean }) {
   return (
     <View style={[styles.section, subdued && { opacity: 0.75 }]}>
       <Text style={styles.eyebrow}>{title.toUpperCase()} · {people.length}</Text>
-      {people.length ? people.map((person) => (
+      {people.map((person) => (
         <Pressable
           key={person.parent_id}
           disabled={!person.profile_visible}
@@ -282,7 +302,7 @@ function ParticipantSection({ title, people, empty, subdued = false }: { title: 
           </View>
           {person.profile_visible ? <Icon name="chevron.right" size={16} color={colors.taupe} /> : null}
         </Pressable>
-      )) : <Text style={styles.help}>{empty}</Text>}
+      ))}
     </View>
   );
 }
@@ -309,26 +329,9 @@ function InfoLine({ icon, text }: { icon: 'map.pin'; text: string }) {
 }
 
 function visibilityLabel(visibility: ActivitySocialProof['activity']['visibility']): string {
-  if (visibility === 'connections') return 'MY VILLAGE';
-  if (visibility === 'invited') return 'INVITED ONLY';
+  if (visibility === 'connections') return 'MY CONNECTIONS';
+  if (visibility === 'invited') return 'CHOSEN FRIENDS';
   return 'PUBLIC';
-}
-
-function formatPlanDate(startIso: string | null, endIso: string | null, allDay: boolean): string {
-  if (!startIso) return 'Date to be announced';
-  const start = new Date(startIso);
-  const day = format(start, 'EEEE, MMMM d');
-  const startTime = format(start, 'h:mm a').replace(':00', '');
-  if (!endIso) return allDay ? `${day} · all day` : `${day} · ${startTime}`;
-  const end = new Date(endIso);
-  if (allDay) {
-    return format(start, 'yyyy-MM-dd') === format(end, 'yyyy-MM-dd')
-      ? `${day} · all day`
-      : `${day} – ${format(end, 'EEEE, MMMM d')} · all day`;
-  }
-  return format(start, 'yyyy-MM-dd') === format(end, 'yyyy-MM-dd')
-    ? `${day} · ${startTime}–${format(end, 'h:mm a').replace(':00', '')}`
-    : `${day} · ${startTime} – ${format(end, 'EEEE, MMMM d · h:mm a').replace(':00', '')}`;
 }
 
 function toneForActivity(emoji: string | null): AvatarTone {
@@ -351,8 +354,9 @@ const styles = {
   editButton: { width: 48, minHeight: 40, alignItems: 'center', justifyContent: 'center' } as const,
   editText: { fontFamily: fonts.sansExtra, fontSize: 12, color: colors.terracotta } as const,
   content: { paddingBottom: 60, gap: 14 } as const,
-  hero: { marginHorizontal: 14, borderRadius: 22, overflow: 'hidden', borderWidth: 1, borderColor: colors.rule, position: 'relative' } as const,
-  heroBadges: { position: 'absolute', left: 12, top: 12, flexDirection: 'row', gap: 6 } as const,
+  compactImage: { width: '100%', height: 80, borderRadius: radii.md } as const,
+  summaryTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: spacing.sm } as const,
+  badges: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm } as const,
   badge: { backgroundColor: 'rgba(255,253,246,0.94)', paddingHorizontal: 9, paddingVertical: 5, borderRadius: 999 } as const,
   badgeText: { fontFamily: fonts.monoBold, fontSize: 9, letterSpacing: 0.4, color: colors.dark } as const,
   titleBlock: { marginHorizontal: 14, padding: 18, gap: 9, backgroundColor: colors.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.rule } as const,
@@ -361,7 +365,14 @@ const styles = {
   date: { fontFamily: fonts.sansExtra, fontSize: 13, lineHeight: 19, color: colors.terracotta } as const,
   infoLine: { flexDirection: 'row', alignItems: 'center', gap: 7 } as const,
   infoText: { flex: 1, fontFamily: fonts.sansBold, fontSize: 13, color: colors.dark } as const,
-  address: { marginLeft: 23, fontFamily: fonts.sans, fontSize: 12, lineHeight: 17, color: colors.taupe } as const,
+  addressRow: { marginLeft: spacing.lg, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm } as const,
+  address: { flex: 1, minWidth: 140, fontFamily: fonts.sans, fontSize: 12, lineHeight: 17, color: colors.brownMid } as const,
+  directionsButton: { minHeight: 44, justifyContent: 'center' } as const,
+  sharedByRow: { flexDirection: 'row', gap: spacing.sm, minHeight: 44, alignItems: 'center' } as const,
+  sharedByText: { flex: 1, fontFamily: fonts.sansSemi, fontSize: 12, color: colors.brownMid } as const,
+  signupButton: { minHeight: 46, paddingHorizontal: spacing.md, borderRadius: radii.md, backgroundColor: colors.terracotta, alignItems: 'center', justifyContent: 'center' } as const,
+  signupButtonText: { fontFamily: fonts.sansExtra, fontSize: 13, color: colors.white } as const,
+  outToggle: { minHeight: 44, paddingHorizontal: spacing.lg, justifyContent: 'center' } as const,
   description: { fontFamily: fonts.serifRegular, fontSize: 17, lineHeight: 24, color: colors.brownMid } as const,
   linkButton: { flexDirection: 'row', alignItems: 'center', gap: 7, paddingTop: 3 } as const,
   linkText: { fontFamily: fonts.sansExtra, fontSize: 12, color: colors.terracotta } as const,
@@ -375,7 +386,7 @@ const styles = {
   rsvpLabel: { fontFamily: fonts.sansBold, fontSize: 11, color: colors.dark } as const,
   rsvpDetails: { gap: 8, paddingTop: 4 } as const,
   rsvpNote: { minHeight: 78, paddingHorizontal: 12, paddingTop: 11, borderRadius: radii.md, borderWidth: 1, borderColor: colors.rule, backgroundColor: colors.cream, fontFamily: fonts.sansSemi, fontSize: 13, lineHeight: 18, color: colors.dark, textAlignVertical: 'top' } as const,
-  saveNoteButton: { minHeight: 36, paddingHorizontal: 13, borderRadius: radii.pill, backgroundColor: colors.terracotta, alignItems: 'center', justifyContent: 'center' } as const,
+  saveNoteButton: { minHeight: 44, paddingHorizontal: 13, borderRadius: radii.pill, backgroundColor: colors.terracotta, alignItems: 'center', justifyContent: 'center' } as const,
   saveNoteText: { fontFamily: fonts.sansExtra, fontSize: 11, color: colors.white } as const,
   clearText: { alignSelf: 'center', fontFamily: fonts.sansBold, fontSize: 11, color: colors.taupe, padding: 5 } as const,
   personRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 10 } as const,

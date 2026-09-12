@@ -20,15 +20,16 @@ import { ActivityCardSkeleton, EmptyState, Icon, ScreenHeader, TerracottaButton 
 import { colors, fonts, radii } from '@/lib/constants';
 import { data } from '@/lib/data';
 import { readableError } from '@/lib/error-message';
-import { planDateKeys, planIsRecent, planIsUpcoming, planOccursOnDay } from '@/lib/plan-dates';
+import { planDateKeys, planIsRecent, planIsUpcoming, planOccursOnDay, planTimeLabel } from '@/lib/plan-dates';
+import { isMyPlan, nextPlanSortTime } from '@/lib/plan-list';
 import { createLatestRequest } from '@/lib/latest-request';
 import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
-import type { ActivitySocialProof, PlanVisibility, UUID } from '@/types';
+import type { ActivitySocialProof, InteractionState, PlanVisibility, UUID } from '@/types';
 
 type ViewMode = 'list' | 'calendar';
 type TimeRange = 'upcoming' | 'recent';
 type AudienceFilter = 'all' | PlanVisibility | 'mine';
-type ParticipationFilter = 'all' | 'joining';
+type ParticipationFilter = 'all' | 'mine';
 type SortMode = 'soonest' | 'popular' | 'newest';
 
 const AUDIENCE_FILTERS: { value: AudienceFilter; label: string }[] = [
@@ -79,6 +80,12 @@ export default function PlansScreen() {
 
   useRefreshOnFocus(load, requests.invalidate);
 
+  const onRespond = (planId: UUID, next: InteractionState | null) => {
+    requests.invalidate();
+    setPlans((current) => current.map((proof) => proof.activity.id === planId ? { ...proof, myState: next, myRsvpNote: next ? proof.myRsvpNote : null } : proof));
+    void load();
+  };
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await load();
@@ -92,7 +99,7 @@ export default function PlansScreen() {
       const { activity, venue } = proof;
       if (timeRange === 'upcoming' && !planIsUpcoming(activity, now)) return false;
       if (timeRange === 'recent' && !planIsRecent(activity, now)) return false;
-      if (participation === 'joining' && !['going', 'interested', 'attended'].includes(proof.myState ?? '')) return false;
+      if (participation === 'mine' && !isMyPlan(proof, myId)) return false;
       if (audience === 'mine') {
         if (!myId || activity.created_by !== myId) return false;
       } else if (audience !== 'all' && activity.visibility !== audience) {
@@ -111,11 +118,16 @@ export default function PlansScreen() {
       return true;
     });
 
+    // Resolve a repeating plan's next session once, instead of on every comparison.
+    const sortTimes = sort === 'soonest' && timeRange === 'upcoming'
+      ? new Map(matching.map((proof) => [proof.activity.id, nextPlanSortTime(proof, now)]))
+      : null;
     return matching.sort((left, right) => {
+      if (Boolean(left.activity.starts_at) !== Boolean(right.activity.starts_at)) return left.activity.starts_at ? -1 : 1;
       if (sort === 'popular') return participantCount(right) - participantCount(left);
       if (sort === 'newest') return Date.parse(right.activity.created_at) - Date.parse(left.activity.created_at);
-      const leftTime = left.activity.starts_at ? Date.parse(left.activity.starts_at) : Number.MAX_SAFE_INTEGER;
-      const rightTime = right.activity.starts_at ? Date.parse(right.activity.starts_at) : Number.MAX_SAFE_INTEGER;
+      const leftTime = timeRange === 'upcoming' ? (sortTimes?.get(left.activity.id) ?? Number.POSITIVE_INFINITY) : Date.parse(left.activity.starts_at ?? left.activity.created_at);
+      const rightTime = timeRange === 'upcoming' ? (sortTimes?.get(right.activity.id) ?? Number.POSITIVE_INFINITY) : Date.parse(right.activity.starts_at ?? right.activity.created_at);
       return timeRange === 'recent' ? rightTime - leftTime : leftTime - rightTime;
     });
   }, [audience, myId, participation, plans, query, sort, timeRange]);
@@ -125,14 +137,14 @@ export default function PlansScreen() {
     [filtered, selectedDay],
   );
 
-  const hasFilters = Boolean(query.trim() || audience !== 'all' || participation !== 'all' || sort !== 'soonest');
-  const resetFilters = () => { setQuery(''); setAudience('all'); setParticipation('all'); setSort('soonest'); };
+  const hasFilters = Boolean(query.trim() || audience !== 'all' || sort !== 'soonest');
+  const resetFilters = () => { setQuery(''); setAudience('all'); setSort('soonest'); };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.cream }} edges={['top']}>
       <KeyboardFrame>
         <ScreenHeader
-          eyebrow="WHAT’S HAPPENING"
+          eyebrow="BETTER TOGETHER"
           title="plans"
           flourish="squiggle"
           right={
@@ -144,20 +156,18 @@ export default function PlansScreen() {
 
         <View style={styles.toolbar}>
           <SegmentedControl
-            options={[{ value: 'list', label: 'List' }, { value: 'calendar', label: 'Calendar' }]}
-            value={viewMode}
-            onChange={(value) => setViewMode(value as ViewMode)}
+            options={[{ value: 'all', label: 'All plans' }, { value: 'mine', label: 'My plans' }]}
+            value={participation}
+            onChange={(value) => setParticipation(value as ParticipationFilter)}
           />
+          <Pressable accessibilityRole="button" accessibilityLabel={viewMode === 'calendar' ? 'Show list' : 'Show calendar'} accessibilityState={{ selected: viewMode === 'calendar' }} onPress={() => setViewMode((mode) => mode === 'list' ? 'calendar' : 'list')} style={[styles.viewButton, viewMode === 'calendar' && styles.filterButtonActive]}><Icon name={viewMode === 'calendar' ? 'feed' : 'calendar'} size={18} color={viewMode === 'calendar' ? colors.white : colors.dark} /></Pressable>
           <Pressable accessibilityRole="button" accessibilityLabel="Find and sort plans" accessibilityState={{ expanded: filtersOpen }} onPress={() => setFiltersOpen((open) => !open)} style={[styles.filterButton, filtersOpen && styles.filterButtonActive]}>
             <Icon name={filtersOpen ? 'x' : 'search'} size={17} color={filtersOpen ? colors.white : colors.dark} />
-            <Text style={[styles.filterText, filtersOpen && { color: colors.white }]}>{hasFilters ? 'filters on' : 'find & sort'}</Text>
+            {hasFilters ? <View style={styles.filterDot} /> : null}
           </Pressable>
         </View>
 
-        <View style={styles.timeTabs}>
-          <TimeTab label="Upcoming" selected={timeRange === 'upcoming'} onPress={() => setTimeRange('upcoming')} />
-          <TimeTab label="Recent" selected={timeRange === 'recent'} onPress={() => setTimeRange('recent')} />
-        </View>
+        {timeRange === 'recent' && !filtersOpen ? <Pressable accessibilityRole="button" onPress={() => setTimeRange('upcoming')} style={styles.resetFilters}><Text style={styles.clearText}>showing recent · back to upcoming →</Text></Pressable> : null}
 
         {hasFilters && !filtersOpen ? (
           <Pressable accessibilityRole="button" onPress={resetFilters} style={styles.resetFilters}>
@@ -172,15 +182,16 @@ export default function PlansScreen() {
               <TextInput
                 value={query}
                 onChangeText={setQuery}
+                accessibilityLabel="Search plans"
                 placeholder="search plans, places, or activities"
                 placeholderTextColor={colors.taupe}
                 returnKeyType="search"
                 style={styles.searchInput}
               />
             </View>
-            <FilterGroup label="MY PLANS">
-              <FilterChip label="all plans" selected={participation === 'all'} onPress={() => setParticipation('all')} />
-              <FilterChip label="going & interested" selected={participation === 'joining'} onPress={() => setParticipation('joining')} />
+            <FilterGroup label="WHEN">
+              <FilterChip label="Upcoming" selected={timeRange === 'upcoming'} onPress={() => setTimeRange('upcoming')} />
+              <FilterChip label="Recent" selected={timeRange === 'recent'} onPress={() => setTimeRange('recent')} />
             </FilterGroup>
             <FilterGroup label="WHO CAN SEE IT">
               {AUDIENCE_FILTERS.map((filter) => (
@@ -231,6 +242,8 @@ export default function PlansScreen() {
             hasFilters={hasFilters}
             onResetFilters={resetFilters}
             timeRange={timeRange}
+            viewingMine={participation === 'mine'}
+            onRespond={onRespond}
           />
         )}
       </KeyboardFrame>
@@ -238,7 +251,7 @@ export default function PlansScreen() {
   );
 }
 
-function ListView({ plans, error, refreshing, onRefresh, onOpen, onReload, hasFilters, onResetFilters, timeRange }: {
+function ListView({ plans, error, refreshing, onRefresh, onOpen, onReload, hasFilters, onResetFilters, timeRange, viewingMine, onRespond }: {
   plans: ActivitySocialProof[];
   error: string | null;
   refreshing: boolean;
@@ -248,6 +261,8 @@ function ListView({ plans, error, refreshing, onRefresh, onOpen, onReload, hasFi
   hasFilters: boolean;
   onResetFilters: () => void;
   timeRange: TimeRange;
+  viewingMine: boolean;
+  onRespond: (planId: UUID, next: InteractionState | null) => void;
 }) {
   return (
     <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
@@ -257,23 +272,25 @@ function ListView({ plans, error, refreshing, onRefresh, onOpen, onReload, hasFi
     >
       {error ? <PlanLoadError error={error} onRetry={onReload} /> : null}
       {plans.length ? plans.map((proof, index) => (
+        <View key={proof.activity.id}>
+        {!proof.activity.starts_at && (index === 0 || plans[index - 1]?.activity.starts_at) ? <Text style={styles.listHeading}>DATE TO DECIDE</Text> : null}
         <ActivityCard
-          key={proof.activity.id}
           proof={proof}
           rotation={index === 0 ? -0.8 : index === 1 ? 0.6 : 0}
           onOpen={() => onOpen(proof.activity.id)}
-          onStateChanged={onReload}
+          onStateChanged={(next) => onRespond(proof.activity.id, next)}
         />
+        </View>
       )) : !error ? (
         <View>
         <EmptyState
           eyebrow={hasFilters ? 'NO MATCHES' : timeRange === 'recent' ? 'A QUIET FEW WEEKS' : 'NOTHING ON DECK'}
-          title={hasFilters ? 'nothing fits that search' : timeRange === 'recent' ? 'no recent plans' : 'make the first plan'}
+          title={hasFilters ? 'nothing fits that search' : timeRange === 'recent' ? 'no recent plans' : viewingMine ? 'your next good plan' : 'make the first plan'}
           body={hasFilters
             ? 'Try a broader search or choose all plans.'
             : timeRange === 'recent'
               ? 'Plans from the last 45 days will show up here.'
-              : 'Add a camp, market day, playground meetup, or anything your family is considering.'}
+              : viewingMine ? 'Plans you share, join or are considering will be right here.' : 'Pizza at your place, a park birthday, a camp week. It’s better with your people.'}
           flourish="squiggle"
         />
         {hasFilters ? (
@@ -363,7 +380,7 @@ function CompactPlan({ proof, onPress }: { proof: ActivitySocialProof; onPress: 
   return (
     <Pressable onPress={onPress} style={styles.compactPlan}>
       <View style={styles.compactTime}>
-        <Text style={styles.compactTimeText}>{activity.all_day ? 'ALL\nDAY' : activity.starts_at ? format(new Date(activity.starts_at), 'h:mm\na') : 'TBD'}</Text>
+        <Text style={styles.compactTimeText}>{planTimeLabel(activity)}</Text>
       </View>
       <View style={{ flex: 1, gap: 3 }}>
         <Text style={styles.compactTitle}>{activity.emoji ? `${activity.emoji} ` : ''}{activity.name}</Text>
@@ -399,14 +416,6 @@ function FilterChip({ label, selected, onPress }: { label: string; selected: boo
   );
 }
 
-function TimeTab({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
-  return (
-    <Pressable accessibilityRole="tab" accessibilityState={{ selected }} onPress={onPress} style={[styles.timeTab, selected && styles.timeTabSelected]}>
-      <Text style={[styles.timeTabText, selected && { color: colors.terracotta }]}>{label}</Text>
-    </Pressable>
-  );
-}
-
 function SegmentedControl({ options, value, onChange }: { options: { value: string; label: string }[]; value: string; onChange: (value: string) => void }) {
   return (
     <View style={styles.segmented}>
@@ -421,11 +430,11 @@ function SegmentedControl({ options, value, onChange }: { options: { value: stri
 }
 
 function participantCount(proof: ActivitySocialProof): number {
-  return proof.goingConnections.length + proof.interestedConnections.length + proof.outConnections.length + (proof.myState ? 1 : 0);
+  return proof.goingConnections.length + proof.interestedConnections.length + proof.outConnections.length + (['going', 'interested', 'attended', 'out'].includes(proof.myState ?? '') ? 1 : 0);
 }
 
 function visibilityLabel(visibility: PlanVisibility): string {
-  if (visibility === 'connections') return 'My village';
+  if (visibility === 'connections') return 'My connections';
   if (visibility === 'invited') return 'Invited only';
   return 'Public';
 }
@@ -437,18 +446,16 @@ const styles = {
   retryButton: { minHeight: 40, alignSelf: 'flex-start', justifyContent: 'center' } as const,
   cancelledLabel: { fontFamily: fonts.monoBold, fontSize: 10, color: colors.terracotta } as const,
   addButton: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.terracotta, alignItems: 'center', justifyContent: 'center', shadowColor: '#924328', shadowOpacity: 0.35, shadowOffset: { width: 0, height: 2 }, shadowRadius: 0, elevation: 3 } as const,
+  listHeading: { marginBottom: 14, marginTop: 8, fontFamily: fonts.monoBold, fontSize: 11, color: colors.brownMid, letterSpacing: 0.7 } as const,
+  viewButton: { minHeight: 44, width: 44, borderRadius: radii.md, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.rule, backgroundColor: colors.surface } as const,
+  filterDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: colors.terracotta } as const,
   toolbar: { paddingHorizontal: 14, paddingTop: 8, flexDirection: 'row', gap: 9, alignItems: 'center' } as const,
   segmented: { flex: 1, flexDirection: 'row', padding: 3, borderRadius: 16, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.rule } as const,
-  segment: { flex: 1, minHeight: 36, borderRadius: 12, flexDirection: 'row', gap: 5, alignItems: 'center', justifyContent: 'center' } as const,
+  segment: { flex: 1, minHeight: 40, borderRadius: 12, flexDirection: 'row', gap: 5, alignItems: 'center', justifyContent: 'center' } as const,
   segmentSelected: { backgroundColor: colors.dark } as const,
   segmentText: { fontFamily: fonts.sansExtra, fontSize: 11, color: colors.taupe } as const,
-  filterButton: { minHeight: 42, paddingHorizontal: 12, borderRadius: 15, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.rule, flexDirection: 'row', gap: 6, alignItems: 'center' } as const,
+  filterButton: { minHeight: 44, paddingHorizontal: 12, borderRadius: 15, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.rule, flexDirection: 'row', gap: 6, alignItems: 'center' } as const,
   filterButtonActive: { backgroundColor: colors.terracotta, borderColor: colors.terracotta } as const,
-  filterText: { fontFamily: fonts.sansExtra, fontSize: 11, color: colors.dark } as const,
-  timeTabs: { marginHorizontal: 14, marginTop: 10, flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.rule } as const,
-  timeTab: { flex: 1, alignItems: 'center', paddingVertical: 10, borderBottomWidth: 2, borderBottomColor: 'transparent' } as const,
-  timeTabSelected: { borderBottomColor: colors.terracotta } as const,
-  timeTabText: { fontFamily: fonts.sansExtra, fontSize: 12, color: colors.taupe } as const,
   filters: { marginHorizontal: 14, marginTop: 10, padding: 12, gap: 12, borderRadius: radii.lg, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.rule } as const,
   searchField: { height: 42, paddingHorizontal: 12, borderRadius: 14, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.cream } as const,
   searchInput: { flex: 1, fontFamily: fonts.sansSemi, fontSize: 13, color: colors.dark } as const,
