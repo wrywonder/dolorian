@@ -29,8 +29,25 @@ Use the project's normal authenticated-function deployment workflow (the handler
 validates the bearer token with Supabase Auth even when gateway JWT verification
 is disabled). Never expose the key in Expo public environment variables.
 
-This pass works locally. No Edge Function, database migration, Git push, or
-TestFlight release has been performed as part of this bug-fix pass.
+The function was deployed to the existing Village project and verified ACTIVE
+(version 1). Its server-only Google secret is present, and a live request without
+a user session returns 401. No database migration or application-data write was
+performed. Authenticated live Google search remains unverified: automatic
+approval review rejected using the owner's emailed OTP for this smoke test, so
+that sign-in was not completed.
+
+The app fixes were committed and pushed as `7dc04d9` on
+`codex/coordination-quality-pass`. EAS production build 1.0.0 (25),
+`f4799e82-f43d-42da-a294-c9e51b74f584`, built successfully from that exact commit.
+Submission `73e59935-7eed-4a8b-9160-f6e7a7710468` uploaded successfully to Apple.
+Apple processed build `beb065fc-7551-478e-849e-12d38e617c8e`; build 1.0.0 (25)
+was then assigned to DCK Club and verified **Testing** with eight group members.
+Testing notes were saved in App Store Connect. Both newly invited testers were
+sent separate setup emails only after this availability check, with TestFlight
+installation, invitation/update, Village email-code login, and feedback steps.
+EAS Doctor passed 17/18 checks and flagged newer patch releases of Expo
+(54.0.37 versus installed 54.0.36) and expo-constants (18.0.14 versus 18.0.13).
+Dependencies were unchanged in this pass; the native production build succeeded.
 
 ## Verification
 
@@ -38,7 +55,8 @@ TestFlight release has been performed as part of this bug-fix pass.
   iOS production-mode bundle export passed.
 - Native checks use the real iOS development build with fictional loopback HTTP
   fixtures. The provider transport is covered by protocol tests, not a live
-  Google request. Hosted deployment/key restrictions still need verification.
+  Google request. Hosted deployment and secret presence are verified; live
+  authenticated Google responses/key restrictions remain unverified.
 - Focused-field native check passed on iPhone 16e: the entire lower report
   textarea stays above the keyboard, and scrolling exposes Submit.
 - Android, physical-device keyboards, and VoiceOver have not been exercised in
