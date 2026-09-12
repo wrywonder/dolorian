@@ -7,14 +7,16 @@
  */
 
 import { supabase } from '@/lib/supabase';
+import { createIdentityScopedLookup } from '@/lib/identity-scoped-lookup';
 import { deliverVillagePushBestEffort } from '@/lib/push-delivery';
+import { createPresenceQueue, hasActiveVisit, isPresenceVisible, startWarnedVisit, visitTimes, type MyPresence } from '@/lib/irl-presence';
+import { prepareCommentBody } from '@/lib/post-engagement';
 import type {
   Activity,
   ActivityInteraction,
   ActivitySocialProof,
   CalendarEvent,
   BlockedParent,
-  ConnectionCircle,
   ConnectionInvite,
   ConnectionInvitePreview,
   ConnectionNotificationPreferences,
@@ -30,6 +32,7 @@ import type {
   Kid,
   NearbyParent,
   Parent,
+  ParentLocation,
   PlanInput,
   PlanLinkPreview,
   PlanParticipant,
@@ -46,32 +49,41 @@ import type {
   VisibilityMode,
 } from '@/types';
 
-const LOCATION_VISIBILITY_MS = 2 * 60 * 60 * 1000;
+const runPresenceMutation = createPresenceQueue();
 const PARENT_PUBLIC_COLUMNS = 'id,auth_user_id,display_name,neighborhood,avatar_color,avatar_initials,avatar_url,bio,profile_background,profile_background_url,visibility_mode,calendar_connected_at,calendar_provider,created_at' as const;
-
-function locationExpiry(from: Date = new Date()): string {
-  return new Date(from.getTime() + LOCATION_VISIBILITY_MS).toISOString();
-}
 
 // ─────── current user identity (cached) ───────
 
-let _cachedParentId: UUID | null = null;
+const currentParentLookup = createIdentityScopedLookup<UUID>({
+  async resolveIdentity() {
+    const { data: { user }, error } = await supabase.auth.getUser();
+    if (error) throw error;
+    return user?.id ?? null;
+  },
+  async load(authUserId) {
+    const { data: parent, error } = await supabase
+      .from('parents')
+      .select('id')
+      .eq('auth_user_id', authUserId)
+      .single();
+    if (error || !parent) throw error ?? new Error('Parent profile not found');
+    return parent.id as UUID;
+  },
+});
 
-async function getCurrentParentId(): Promise<UUID> {
-  if (_cachedParentId) return _cachedParentId;
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error('Not authenticated');
-  const { data, error } = await supabase
-    .from('parents')
-    .select('id')
-    .eq('auth_user_id', user.id)
-    .single();
-  if (error || !data) throw new Error('Parent profile not found');
-  _cachedParentId = data.id as UUID;
-  return _cachedParentId!;
+function getCurrentParentId(): Promise<UUID> {
+  return currentParentLookup.get();
 }
 
-supabase.auth.onAuthStateChange(() => { _cachedParentId = null; });
+function getCachedCurrentParentId(): UUID | null {
+  return currentParentLookup.peek() ?? null;
+}
+
+supabase.auth.onAuthStateChange((_event, session) => {
+  // Refreshing the same user's token preserves useful data. A different user
+  // invalidates both cached IDs and any previous account's pending lookup.
+  currentParentLookup.setIdentity(session?.user.id ?? null);
+});
 
 // ─────── current user ───────
 
@@ -113,11 +125,12 @@ async function getFeedPosts(): Promise<FeedItem[]> {
   const postIds = visiblePosts.map((row: Record<string, unknown>) => row.id as string);
   const myReactedIds = new Set<string>();
   if (postIds.length > 0) {
-    const { data: mine } = await supabase
+    const { data: mine, error: reactionError } = await supabase
       .from('post_reactions')
       .select('post_id')
       .eq('parent_id', me)
       .in('post_id', postIds);
+    if (reactionError) throw reactionError;
     for (const r of mine ?? []) {
       myReactedIds.add((r as Record<string, unknown>).post_id as string);
     }
@@ -159,32 +172,24 @@ function extractPost(row: Record<string, unknown>): Post {
 // ─────── reactions & comments ───────
 
 /**
- * Toggle the current user's reaction on a post. Returns true when the
- * post is now reacted-to, false when the reaction was removed.
+ * Set the intended state directly, so retrying a write never reverses it.
  */
-async function toggleReaction(postId: UUID, emoji: string): Promise<boolean> {
+async function setPostReaction(postId: UUID, emoji: string, reacted: boolean): Promise<void> {
   const me = await getCurrentParentId();
-  const { data: existing } = await supabase
-    .from('post_reactions')
-    .select('id')
-    .eq('post_id', postId)
-    .eq('parent_id', me)
-    .maybeSingle();
-
-  if (existing) {
+  if (!reacted) {
     const { error } = await supabase
       .from('post_reactions')
       .delete()
-      .eq('id', (existing as { id: string }).id);
+      .eq('post_id', postId)
+      .eq('parent_id', me);
     if (error) throw error;
-    return false;
+    return;
   }
 
   const { error } = await supabase
     .from('post_reactions')
-    .insert({ post_id: postId, parent_id: me, emoji });
+    .upsert({ post_id: postId, parent_id: me, emoji }, { onConflict: 'post_id,parent_id' });
   if (error) throw error;
-  return true;
 }
 
 async function getPostComments(postId: UUID): Promise<CommentView[]> {
@@ -205,10 +210,11 @@ async function getPostComments(postId: UUID): Promise<CommentView[]> {
 }
 
 async function addComment(postId: UUID, body: string): Promise<void> {
+  const preparedBody = prepareCommentBody(body);
   const me = await getCurrentParentId();
   const { error } = await supabase
     .from('post_comments')
-    .insert({ post_id: postId, author_id: me, body });
+    .insert({ post_id: postId, author_id: me, body: preparedBody });
   if (error) throw error;
 }
 
@@ -491,7 +497,7 @@ async function setPlanRsvp(
     p_plan: planId,
     p_state: state,
   };
-  if (note !== undefined) args.p_note = note;
+  if (note !== undefined) args.p_note = note.trim();
   const { data: result, error } = await supabase.rpc('set_plan_rsvp', args);
   if (error) throw error;
   return result as ActivityInteraction;
@@ -532,6 +538,14 @@ async function updateActivityInteraction(
 
 // ─────── nearby (IRL tab) ───────
 
+async function mutateCurrentPresence<T>(operation: (parentId: UUID) => Promise<T>): Promise<T> {
+  const parentId = await getCurrentParentId();
+  return runPresenceMutation(async () => {
+    if (await getCurrentParentId() !== parentId) throw new Error('Your account changed. Please try again.');
+    return operation(parentId);
+  });
+}
+
 async function getNearbyParents(): Promise<NearbyParent[]> {
   const now = new Date().toISOString();
   const { data, error } = await supabase
@@ -539,8 +553,8 @@ async function getNearbyParents(): Promise<NearbyParent[]> {
     .select(`*, parent:parents(${PARENT_PUBLIC_COLUMNS}), venue:venues(*)`)
     .or(`visible.eq.true,auto_share_at.lte.${now}`)
     .gt('expires_at', now);
-  if (error || !data) return [];
-  return data.map((row: Record<string, unknown>) => ({
+  if (error) throw error;
+  return (data ?? []).filter((row) => row.parent && row.venue).map((row: Record<string, unknown>) => ({
     parent: row.parent as Parent,
     location: {
       id: row.id as string,
@@ -564,8 +578,8 @@ async function getVisibleConnectionAvatars(): Promise<Parent[]> {
     .or(`visible.eq.true,auto_share_at.lte.${now}`)
     .gt('expires_at', now)
     .neq('parent_id', me);
-  if (error || !data) return [];
-  return data
+  if (error) throw error;
+  return (data ?? [])
     .map((row: Record<string, unknown>) => row.parent as Parent | null)
     .filter((p): p is Parent => p !== null);
 }
@@ -575,7 +589,7 @@ async function getWarmingUpVenues(): Promise<{ venue: Venue; count: number }[]> 
   const now = new Date().toISOString();
 
   // All venues + visible parents per venue (excluding self), in parallel
-  const [{ data: venues }, { data: locations }] = await Promise.all([
+  const [{ data: venues, error: venueError }, { data: locations, error: locationError }] = await Promise.all([
     supabase.from('venues').select('*'),
     supabase
       .from('parent_locations')
@@ -584,6 +598,8 @@ async function getWarmingUpVenues(): Promise<{ venue: Venue; count: number }[]> 
       .gt('expires_at', now)
       .neq('parent_id', me),
   ]);
+  if (venueError) throw venueError;
+  if (locationError) throw locationError;
   if (!venues) return [];
 
   const counts = new Map<string, number>();
@@ -598,38 +614,26 @@ async function getWarmingUpVenues(): Promise<{ venue: Venue; count: number }[]> 
 }
 
 async function setVisibilityMode(mode: VisibilityMode): Promise<void> {
-  const me = await getCurrentParentId();
-  const now = new Date();
-  const { error } = await supabase.from('parents').update({ visibility_mode: mode }).eq('id', me);
-  if (error) throw error;
-
-  if (mode === 'disabled') {
-    const { error: locationError } = await supabase.from('parent_locations').upsert({
-      parent_id: me,
-      venue_id: null,
-      visible: false,
-      auto_share_at: null,
-      last_seen_at: now.toISOString(),
-      expires_at: now.toISOString(),
-    }, { onConflict: 'parent_id' });
-    if (locationError) throw locationError;
-  } else if (mode === 'on') {
-    const { data: current } = await supabase
-      .from('parent_locations')
-      .select('venue_id')
-      .eq('parent_id', me)
-      .maybeSingle();
-    if (current?.venue_id) {
-      const { error: locationError } = await supabase.from('parent_locations').upsert({
-        parent_id: me,
-        visible: true,
-        auto_share_at: null,
-        last_seen_at: now.toISOString(),
-        expires_at: locationExpiry(now),
-      }, { onConflict: 'parent_id' });
+  return mutateCurrentPresence(async (me) => {
+    // Hide the visit first: a preference-write failure must not leave sharing on.
+    if (mode === 'disabled') {
+      const now = new Date().toISOString();
+      const { error } = await supabase.from('parent_locations').update({
+        venue_id: null, visible: false, auto_share_at: null, expires_at: now, last_seen_at: now,
+      }).eq('parent_id', me);
+      if (error) throw error;
+    }
+    const { error } = await supabase.from('parents').update({ visibility_mode: mode }).eq('id', me);
+    if (error) throw error;
+    if (mode === 'on') {
+      // Switching a preference can reveal a pending visit, but never resurrect
+      // an expired one or extend the time a parent chose to share.
+      const { error: locationError } = await supabase.from('parent_locations').update({
+        visible: true, auto_share_at: null,
+      }).eq('parent_id', me).not('venue_id', 'is', null).gt('expires_at', new Date().toISOString());
       if (locationError) throw locationError;
     }
-  }
+  });
 }
 
 async function createVenue(input: {
@@ -651,77 +655,81 @@ async function createVenue(input: {
   return data as Venue;
 }
 
-async function checkInAtVenue(venueId: UUID): Promise<void> {
-  const me = await getCurrentParentId();
-  const now = new Date();
-  const { error } = await supabase
-    .from('parent_locations')
-    .upsert(
-      {
-        parent_id: me,
-        venue_id: venueId,
-        visible: true,
-        auto_share_at: null,
-        last_seen_at: now.toISOString(),
-        expires_at: locationExpiry(now),
-      },
-      { onConflict: 'parent_id' },
-    );
-  if (error) throw error;
+async function checkInAtVenue(venueId: UUID): Promise<ParentLocation> {
+  return mutateCurrentPresence(async (me) => {
+    // Explicit visits are independent of the automatic-sharing preference.
+    const { data: location, error } = await supabase.from('parent_locations').upsert({
+      parent_id: me, venue_id: venueId, visible: true, ...visitTimes(),
+    }, { onConflict: 'parent_id' }).select('*').single();
+    if (error || !location) throw error ?? new Error('Could not confirm this visit.');
+    return location as ParentLocation;
+  });
 }
 
-async function beginHangoutVisit(venueId: UUID): Promise<VisibilityMode> {
-  const me = await getCurrentParentId();
-  const { data: parent, error: parentError } = await supabase
-    .from('parents')
-    .select('visibility_mode')
-    .eq('id', me)
-    .single();
-  if (parentError || !parent) throw parentError ?? new Error('Profile not found');
-  const mode = parent.visibility_mode as VisibilityMode;
-  if (mode === 'disabled') return mode;
-
-  const now = new Date();
-  const { error } = await supabase.from('parent_locations').upsert({
-    parent_id: me,
-    venue_id: venueId,
-    visible: mode === 'on',
-    auto_share_at: mode === 'auto'
-      ? new Date(now.getTime() + 5 * 60 * 1000).toISOString()
-      : null,
-    last_seen_at: now.toISOString(),
-    expires_at: locationExpiry(now),
-  }, { onConflict: 'parent_id' });
-  if (error) throw error;
-  return mode;
+async function beginHangoutVisit(
+  venueId: UUID,
+  expectedParentId: UUID,
+  warning: { show: () => Promise<void>; cancel: () => Promise<void>; canStart: () => Promise<boolean> },
+): Promise<VisibilityMode | null> {
+  return mutateCurrentPresence(async (me) => {
+    if (me !== expectedParentId) return null;
+    if (!await warning.canStart()) return null;
+    const current = await getMyVisibility();
+    if (current.mode === 'disabled') return null;
+    // Repeated region entry events (including iOS startup) must not restart a
+    // countdown, extend a visit, or replace a manually selected active place.
+    if (hasActiveVisit(current.location)) return null;
+    const save = async () => {
+      if (!await warning.canStart()) {
+        await warning.cancel();
+        return null;
+      }
+      const { error } = await supabase.from('parent_locations').upsert({
+        parent_id: me, venue_id: venueId, visible: current.mode === 'on',
+        ...visitTimes(Date.now(), current.mode === 'auto'),
+      }, { onConflict: 'parent_id' });
+      if (error) throw error;
+      return current.mode;
+    };
+    return current.mode === 'auto'
+      ? startWarnedVisit(warning.show, save, warning.cancel)
+      : save();
+  });
 }
 
-async function endHangoutVisit(venueId: UUID): Promise<void> {
-  const me = await getCurrentParentId();
-  const now = new Date().toISOString();
-  const { error } = await supabase.from('parent_locations').update({
-    venue_id: null,
-    visible: false,
-    auto_share_at: null,
-    last_seen_at: now,
-    expires_at: now,
-  }).eq('parent_id', me).eq('venue_id', venueId);
-  if (error) throw error;
+async function endHangoutVisit(venueId: UUID, expectedParentId?: UUID): Promise<void> {
+  return mutateCurrentPresence(async (me) => {
+    if (expectedParentId && me !== expectedParentId) return;
+    const now = new Date().toISOString();
+    const { error } = await supabase.from('parent_locations').update({
+      venue_id: null, visible: false, auto_share_at: null, last_seen_at: now, expires_at: now,
+    }).eq('parent_id', me).eq('venue_id', venueId);
+    if (error) throw error;
+  });
 }
 
-async function getMyVisibility(): Promise<{ mode: VisibilityMode; visible: boolean }> {
+async function getMyVisibility(): Promise<MyPresence> {
   const me = await getCurrentParentId();
-  const [{ data: parent, error }, { data: location }] = await Promise.all([
+  const [{ data: parent, error }, { data: row, error: locationError }] = await Promise.all([
     supabase.from('parents').select('visibility_mode').eq('id', me).single(),
-    supabase.from('parent_locations').select('visible, auto_share_at, expires_at').eq('parent_id', me).maybeSingle(),
+    supabase.from('parent_locations').select('*, venue:venues(*)').eq('parent_id', me).maybeSingle(),
   ]);
   if (error || !parent) throw error ?? new Error('Profile not found');
-  const expiresAt = (location?.expires_at as string | null) ?? null;
-  const autoShareAt = (location?.auto_share_at as string | null) ?? null;
-  const active = Boolean(expiresAt && new Date(expiresAt).getTime() > Date.now());
+  if (locationError) throw locationError;
+  const location = row ? {
+    id: row.id as UUID,
+    parent_id: row.parent_id as UUID,
+    venue_id: row.venue_id as UUID | null,
+    visible: Boolean(row.visible),
+    last_seen_at: row.last_seen_at as string,
+    expires_at: row.expires_at as string | null,
+    auto_share_at: row.auto_share_at as string | null,
+  } : null;
   return {
     mode: parent.visibility_mode as VisibilityMode,
-    visible: active && Boolean(location?.visible || (autoShareAt && new Date(autoShareAt).getTime() <= Date.now())),
+    visible: isPresenceVisible(location),
+    location,
+    venue: (row?.venue as Venue | null) ?? null,
   };
 }
 
@@ -1134,44 +1142,6 @@ async function setConnectionPreferences(
   return data as ConnectionPreference;
 }
 
-async function getConnectionCircles(): Promise<ConnectionCircle[]> {
-  const { data, error } = await supabase
-    .from('connection_circles')
-    .select('*, members:connection_circle_members(parent_id)')
-    .order('created_at');
-  if (error) throw error;
-  return (data ?? []).map((row: Record<string, unknown>) => ({
-    id: row.id as UUID,
-    owner_id: row.owner_id as UUID,
-    name: row.name as string,
-    emoji: row.emoji as string,
-    created_at: row.created_at as string,
-    updated_at: row.updated_at as string,
-    memberIds: ((row.members as { parent_id: UUID }[] | null) ?? []).map((member) => member.parent_id),
-  }));
-}
-
-async function createConnectionCircle(name: string, emoji: string): Promise<ConnectionCircle> {
-  const me = await getCurrentParentId();
-  const { data, error } = await supabase
-    .from('connection_circles')
-    .insert({ owner_id: me, name: name.trim(), emoji })
-    .select()
-    .single();
-  if (error) throw error;
-  return { ...(data as Omit<ConnectionCircle, 'memberIds'>), memberIds: [] };
-}
-
-async function deleteConnectionCircle(circleId: UUID): Promise<void> {
-  const { error } = await supabase.from('connection_circles').delete().eq('id', circleId);
-  if (error) throw error;
-}
-
-async function setConnectionCircleMembers(circleId: UUID, memberIds: UUID[]): Promise<void> {
-  const { error } = await supabase.rpc('set_circle_members', { p_circle: circleId, p_members: memberIds });
-  if (error) throw error;
-}
-
 async function getMyPhone(): Promise<string | null> {
   const { data, error } = await supabase.rpc('get_my_phone');
   if (error) throw error;
@@ -1281,6 +1251,8 @@ async function deletePost(postId: UUID): Promise<void> {
 // ─────── public interface ───────
 
 export const data = {
+  getCurrentParentId,
+  getCachedCurrentParentId,
   getCurrentUser,
   getFeedPosts,
   getPendingPrompt,
@@ -1331,10 +1303,6 @@ export const data = {
   previewConnectionInvite,
   redeemConnectionInvite,
   setConnectionPreferences,
-  getConnectionCircles,
-  createConnectionCircle,
-  deleteConnectionCircle,
-  setConnectionCircleMembers,
   getMyPhone,
   setMyPhone,
   getContactExchange,
@@ -1345,7 +1313,7 @@ export const data = {
   createPost,
   deletePost,
   getCalendarEvents,
-  toggleReaction,
+  setPostReaction,
   getPostComments,
   addComment,
 };

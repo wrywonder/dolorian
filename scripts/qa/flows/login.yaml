@@ -1,0 +1,22 @@
+appId: com.dolorian.app
+---
+- runFlow:
+    when:
+      visible: "^Open$"
+    commands:
+      - tapOn: "^Open$"
+- tapOn: "you@example.com"
+- inputText: "parent@example.test"
+- pressKey: Enter
+- tapOn: "8-digit code"
+- inputText: "12345678"
+- tapOn: "finish signing in.*"
+- runFlow:
+    when:
+      visible: "Don.t Allow"
+    commands:
+      - tapOn: "Don.t Allow"
+- extendedWaitUntil:
+    visible: "buzz"
+    timeout: 20000
+- takeScreenshot: buzz-initial

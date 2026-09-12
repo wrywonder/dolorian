@@ -1,8 +1,6 @@
-import { useLocalSearchParams } from 'expo-router';
-import { CircleEditorScreen } from '@/components/village/circle-editor-screen';
+import { Redirect } from 'expo-router';
 
+/** Older links land on connections now that circles are no longer part of the UI. */
 export default function CircleRoute() {
-  const { id } = useLocalSearchParams<{ id: string }>();
-  if (!id) return null;
-  return <CircleEditorScreen circleId={id} />;
+  return <Redirect href="/village" />;
 }

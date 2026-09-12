@@ -1,0 +1,33 @@
+appId: com.dolorian.app
+---
+- evalScript: ${output.memoryText = 'Avery loved the bubbles. Local QA memory ' + Date.now()}
+- openLink: dolorian://plan/99000000-0000-4000-8000-000000000304
+- assertVisible: "plan details"
+- scrollUntilVisible:
+    element:
+      text: "share a memory.*"
+    direction: DOWN
+- tapOn: "share a memory.*"
+- assertVisible: "share a memory"
+- assertVisible: ".*Last weekend at the park"
+- takeScreenshot: memory-linked-composer
+- tapOn: ".*thought"
+- tapOn: "Memory or thought.*"
+- inputText: ${output.memoryText}
+- swipe:
+    from:
+      text: ".*thought"
+    direction: UP
+    duration: 600
+- scrollUntilVisible:
+    element:
+      text: "share it.*"
+    direction: DOWN
+- tapOn: "share it.*"
+- assertVisible: "plan details"
+- evalScript: ${output.savedMemory = json(http.get('http://127.0.0.1:54329/__qa/state').body).tables.posts.filter(p => p.body === output.memoryText)[0]}
+- assertTrue: ${output.savedMemory && output.savedMemory.activity_id === '99000000-0000-4000-8000-000000000304' && output.savedMemory.type === 'text' && output.savedMemory.media_path === null}
+- openLink: dolorian://buzz
+- assertVisible: ${'.*' + output.memoryText + '.*'}
+- assertVisible: "View plan: Last weekend at the park"
+- takeScreenshot: memory-linked-feed

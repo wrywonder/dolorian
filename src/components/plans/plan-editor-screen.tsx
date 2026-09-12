@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
@@ -15,6 +16,8 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { AvatarCircle, Icon, TerracottaButton } from '@/components/ui';
 import { colors, fonts, radii } from '@/lib/constants';
 import { data } from '@/lib/data';
+import { createLatestRequest } from '@/lib/latest-request';
+import { applyPlanLinkPreview } from '@/lib/plan-import-draft';
 import { readableError } from '@/lib/error-message';
 import type { ActivitySocialProof, ConnectionView, PlanInput, PlanLinkPreview, PlanVisibility, UUID } from '@/types';
 
@@ -29,8 +32,14 @@ export function PlanEditorScreen() {
   const editing = Boolean(id);
   const initialStart = useMemo(() => nextFriendlyStart(), []);
   const [connections, setConnections] = useState<ConnectionView[]>([]);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [loading, setLoading] = useState(editing);
   const [saving, setSaving] = useState(false);
+  const [importRequests] = useState(createLatestRequest);
+  const importPending = useRef(false);
+  const savePending = useRef(false);
+  const previousImport = useRef<PlanLinkPreview | null>(null);
+  const [canEdit, setCanEdit] = useState(!editing);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<PlanLinkPreview | null>(null);
   const [existingPlan, setExistingPlan] = useState<ActivitySocialProof | null>(null);
@@ -55,6 +64,9 @@ export function PlanEditorScreen() {
 
   useEffect(() => {
     let active = true;
+    setLoading(editing);
+    setCanEdit(!editing);
+    setError(null);
     Promise.all([
       data.getConnectionViews(),
       id ? data.getPlan(id) : Promise.resolve(null),
@@ -63,14 +75,21 @@ export function PlanEditorScreen() {
     ]).then(([rows, proof, invitees, me]) => {
       if (!active) return;
       setMyId(me.id);
-      setConnections(rows.filter((row) => row.connection.status === 'connected'));
-      setInvitedIds(new Set(invitees));
+      const currentConnections = rows.filter((row) => row.connection.status === 'connected');
+      setConnections(currentConnections);
+      const acceptedIds = new Set(currentConnections.map((row) => row.parent.id));
+      setInvitedIds(new Set(invitees.filter((parentId) => acceptedIds.has(parentId))));
       if (proof) {
         const plan = proof.activity;
         if (plan.created_by !== me.id) {
           setError('Only the person who created this plan can edit it.');
           return;
         }
+        if (plan.cancelled_at) {
+          setError('This plan was cancelled and can no longer be edited.');
+          return;
+        }
+        setCanEdit(true);
         setName(plan.name);
         setDescription(plan.description ?? '');
         setEmoji(plan.emoji ?? '✨');
@@ -97,47 +116,43 @@ export function PlanEditorScreen() {
     }).catch((cause) => {
       if (active) setError(readableError(cause, 'Could not load the plan editor.'));
     }).finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
-  }, [id]);
+    return () => { active = false; importRequests.invalidate(); };
+  }, [id, editing, importRequests, loadAttempt]);
 
   const importLink = async () => {
+    if (savePending.current || importPending.current || !canEdit) return;
     if (!sourceUrl.trim()) { setError('Paste a public link first.'); return; }
+    const isCurrent = importRequests.begin();
+    importPending.current = true;
     setImporting(true);
     setError(null);
     try {
       const preview = await data.importPlanLink(sourceUrl.trim());
+      if (!isCurrent()) return;
       const match = await data.findExistingPlan(preview.sourceKey, preview.url, id);
+      if (!isCurrent()) return;
+      const draft = applyPlanLinkPreview({ name, description, emoji, locationName, locationAddress, coverImageUrl, date, time, endDate, endTime, allDay }, preview, previousImport.current);
       setSourceUrl(preview.url);
       setSourceKey(preview.sourceKey);
-      if (preview.title) setName(preview.title);
-      if (preview.description) setDescription(preview.description);
-      if (preview.imageUrl) setCoverImageUrl(preview.imageUrl);
-      if (preview.emoji) setEmoji(preview.emoji);
-      if (preview.locationName) setLocationName(preview.locationName);
-      if (preview.locationAddress) setLocationAddress(preview.locationAddress);
-      if (preview.startDate) {
-        setDate(preview.startDate);
-        if (preview.startTime) setTime(preview.startTime);
-        else if (preview.allDay !== true) setTime('');
-      } else {
-        setTime('');
-        setEndDate('');
-        setEndTime('');
-        setAllDay(false);
-      }
-      if (preview.endDate) {
-        setEndDate(preview.endDate);
-        if (preview.endTime) setEndTime(preview.endTime);
-        else if (preview.allDay !== true) setEndTime('');
-      }
-      if (preview.allDay !== null) setAllDay(preview.allDay);
+      setName(draft.name);
+      setDescription(draft.description);
+      setCoverImageUrl(draft.coverImageUrl);
+      setEmoji(draft.emoji);
+      setLocationName(draft.locationName);
+      setLocationAddress(draft.locationAddress);
+      setDate(draft.date);
+      setTime(draft.time);
+      setEndDate(draft.endDate);
+      setEndTime(draft.endTime);
+      setAllDay(draft.allDay);
+      previousImport.current = preview;
       setImportResult(preview);
       setExistingPlan(match);
       setCreateSeparatePlan(false);
     } catch (cause) {
-      setError(readableError(cause, 'Could not import that link. You can still add its details manually.'));
+      if (isCurrent()) setError(readableError(cause, 'Could not import that link. You can still add its details manually.'));
     } finally {
-      setImporting(false);
+      if (isCurrent()) { importPending.current = false; setImporting(false); }
     }
   };
 
@@ -150,6 +165,8 @@ export function PlanEditorScreen() {
   };
 
   const save = async () => {
+    if (savePending.current || importPending.current || !canEdit) return;
+    savePending.current = true;
     setSaving(true);
     setError(null);
     try {
@@ -160,6 +177,7 @@ export function PlanEditorScreen() {
       const endsAt = endDate.trim()
         ? parseLocalDateTime(endDate, endTime || time, allDay)
         : null;
+      if (endsAt && Date.parse(endsAt) < Date.parse(startsAt)) throw new Error('Choose an end after the start of the plan.');
       if (visibility === 'invited' && invitedIds.size === 0) {
         throw new Error('Choose at least one connection for an invited-only plan.');
       }
@@ -179,16 +197,27 @@ export function PlanEditorScreen() {
         cover_image_url: coverImageUrl.trim(),
       };
       const saved = id ? await data.updatePlan(id, input) : await data.createPlan(input);
-      router.replace(`/plan/${saved.id}` as never);
+      if (editing) router.dismissTo(`/plan/${saved.id}` as never);
+      else router.replace(`/plan/${saved.id}` as never);
     } catch (cause) {
       setError(readableError(cause, 'Could not save this plan.'));
     } finally {
+      savePending.current = false;
       setSaving(false);
     }
   };
 
   if (loading) {
     return <SafeAreaView style={styles.loading}><ActivityIndicator color={colors.terracotta} /></SafeAreaView>;
+  }
+
+  if (editing && !canEdit) {
+    return <SafeAreaView style={[styles.loading, { padding: 24, gap: 16 }]}>
+      <Text style={styles.sectionTitle}>plan unavailable</Text>
+      <Text selectable accessibilityRole="alert" style={styles.help}>{error}</Text>
+      <TerracottaButton label="try again" onPress={() => setLoadAttempt((attempt) => attempt + 1)} />
+      <Pressable accessibilityRole="button" onPress={() => router.back()} style={styles.secondaryButton}><Text style={styles.secondaryText}>go back</Text></Pressable>
+    </SafeAreaView>;
   }
 
   return (
@@ -203,144 +232,161 @@ export function PlanEditorScreen() {
         </View>
       </View>
 
-      <ScrollView contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
-        <Section eyebrow="IMPORT" title="start with a link">
-          <Text style={styles.help}>Have a camp, class, or event listing? Paste it here and Village will prefill the shared facts. Planning something informal, like a Sonoma house weekend? Skip the link and fill in the plan below.</Text>
-          <TextInput
-            value={sourceUrl}
-            onChangeText={(value) => {
-              setSourceUrl(value);
-              setSourceKey('');
-              setImportResult(null);
-              setExistingPlan(null);
-              setCreateSeparatePlan(false);
-            }}
-            onSubmitEditing={importLink}
-            returnKeyType="go"
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="url"
-            placeholder="https://…"
-            placeholderTextColor={colors.taupe}
-            style={styles.field}
-          />
-          <SecondaryButton label={importing ? 'reading the page…' : 'prefill plan details'} loading={importing} onPress={importLink} />
-          {importResult ? (
-            <View style={styles.importSuccess}>
-              <Icon name="check.circle" size={20} color={colors.sage} />
-              <View style={{ flex: 1, gap: 2 }}>
-                <Text style={styles.importSuccessTitle}>
-                  Filled {importResult.importedFields.length} detail{importResult.importedFields.length === 1 ? '' : 's'}
-                </Text>
-                <Text style={styles.help}>
-                  {importResult.inference === 'ai'
-                    ? 'AI-assisted import'
-                    : importResult.inference === 'provider'
-                      ? 'Filled from the link'
-                      : 'Read from the listing'} · review below before publishing
-                </Text>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <ScrollView
+          style={{ flex: 1 }}
+          contentInsetAdjustmentBehavior="automatic"
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+          contentContainerStyle={styles.content}
+        >
+          <Section eyebrow="IMPORT" title="start with a link">
+            <Text style={styles.help}>Have a camp, class, or event listing? Paste it here and Village will prefill the shared facts. Planning something informal, like a Sonoma house weekend? Skip the link and fill in the plan below.</Text>
+            <TextInput
+              editable={!saving && canEdit}
+              accessibilityLabel="Original listing link"
+              value={sourceUrl}
+              onChangeText={(value) => {
+                importRequests.invalidate();
+                importPending.current = false;
+                setImporting(false);
+                setSourceUrl(value);
+                setSourceKey('');
+                setImportResult(null);
+                setExistingPlan(null);
+                setCreateSeparatePlan(false);
+              }}
+              onSubmitEditing={importLink}
+              returnKeyType="go"
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="url"
+              placeholder="https://…"
+              placeholderTextColor={colors.taupe}
+              style={styles.field}
+            />
+            <SecondaryButton disabled={saving || !canEdit} label={importing ? 'reading the page…' : 'prefill plan details'} loading={importing} onPress={importLink} />
+            {importResult ? (
+              <View style={styles.importSuccess}>
+                <Icon name="check.circle" size={20} color={colors.sage} />
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Text style={styles.importSuccessTitle}>
+                    Filled {importResult.importedFields.length} detail{importResult.importedFields.length === 1 ? '' : 's'}
+                  </Text>
+                  <Text style={styles.help}>
+                    {importResult.inference === 'ai'
+                      ? 'AI-assisted import'
+                      : importResult.inference === 'provider'
+                        ? 'Filled from the link'
+                        : 'Read from the listing'} · review below before publishing
+                  </Text>
+                </View>
               </View>
-            </View>
-          ) : null}
-          {importResult?.warnings.map((warning) => (
-            <View key={warning} style={styles.importWarning}>
-              <Icon name="info" size={18} color={colors.terracotta} />
-              <Text selectable style={[styles.help, { flex: 1, color: colors.brownMid }]}>{warning}</Text>
-            </View>
-          ))}
-          {existingPlan && !createSeparatePlan ? (
-            <View style={styles.existingPlan}>
-              <Text style={styles.eyebrow}>ALREADY IN VILLAGE</Text>
-              <Text style={styles.existingTitle}>{existingPlan.activity.name}</Text>
-              <Text style={styles.help}>
-                {existingPlan.activity.created_by === myId ? 'You already added this listing.' : 'Someone you can see already added this listing.'}{' '}
-                {participantCount(existingPlan)} {participantCount(existingPlan) === 1 ? 'family is' : 'families are'} coordinating there.
-              </Text>
-              <SecondaryButton label="open existing plan →" onPress={() => router.replace(`/plan/${existingPlan.activity.id}` as never)} />
-              <Pressable onPress={() => setCreateSeparatePlan(true)} style={{ alignSelf: 'center', padding: 6 }}>
-                <Text style={styles.separateText}>this is actually a separate plan</Text>
-              </Pressable>
-            </View>
-          ) : null}
-        </Section>
-
-        <Section eyebrow="THE PLAN" title="what’s happening?">
-          <View style={{ flexDirection: 'row', gap: 10 }}>
-            <TextInput value={emoji} onChangeText={setEmoji} maxLength={4} accessibilityLabel="Plan emoji" style={[styles.field, { width: 58, textAlign: 'center', fontSize: 22, paddingHorizontal: 4 }]} />
-            <TextInput value={name} onChangeText={setName} maxLength={140} placeholder="Saturday farmers market" placeholderTextColor={colors.taupe} style={[styles.field, { flex: 1 }]} />
-          </View>
-          <TextInput value={description} onChangeText={setDescription} maxLength={600} multiline placeholder="A few useful details for other parents…" placeholderTextColor={colors.taupe} style={[styles.field, styles.multiline]} />
-          <TextInput value={locationName} onChangeText={setLocationName} placeholder="Place name" placeholderTextColor={colors.taupe} style={styles.field} />
-          <TextInput value={locationAddress} onChangeText={setLocationAddress} placeholder="Address or meetup note" placeholderTextColor={colors.taupe} style={styles.field} />
-        </Section>
-
-        <Section eyebrow="WHEN" title="pick a day">
-          <View style={{ flexDirection: 'row', gap: 10 }}>
-            <PickerField label="START DATE" mode="date" dateValue={date} timeValue={time} onChange={setDate} />
-            {!allDay ? time ? (
-              <PickerField label="TIME" mode="time" dateValue={date} timeValue={time} onChange={setTime} compact />
-            ) : (
-              <AddTimeButton label="ADD TIME" onPress={() => setTime('09:00')} />
             ) : null}
-          </View>
-          {endDate ? (
-            <View style={{ gap: 8 }}>
-              <View style={{ flexDirection: 'row', gap: 10 }}>
-                <PickerField label="END DATE" mode="date" dateValue={endDate} timeValue={endTime || time} onChange={setEndDate} minimumDate={dateFromInputs(date, time)} />
-                {!allDay ? endTime ? (
-                  <PickerField label="TIME" mode="time" dateValue={endDate} timeValue={endTime} onChange={setEndTime} compact />
-                ) : (
-                  <AddTimeButton label="END TIME" onPress={() => setEndTime(defaultEndTime(time))} />
-                ) : null}
+            {importResult?.warnings.map((warning) => (
+              <View key={warning} style={styles.importWarning}>
+                <Icon name="info" size={18} color={colors.terracotta} />
+                <Text selectable style={[styles.help, { flex: 1, color: colors.brownMid }]}>{warning}</Text>
               </View>
-              <Pressable onPress={() => { setEndDate(''); setEndTime(''); }} style={{ alignSelf: 'flex-start', paddingVertical: 4 }}>
-                <Text style={styles.separateText}>remove end date</Text>
-              </Pressable>
+            ))}
+            {existingPlan && !createSeparatePlan ? (
+              <View style={styles.existingPlan}>
+                <Text style={styles.eyebrow}>ALREADY IN VILLAGE</Text>
+                <Text style={styles.existingTitle}>{existingPlan.activity.name}</Text>
+                <Text style={styles.help}>
+                  {existingPlan.activity.created_by === myId ? 'You already added this listing.' : 'Someone you can see already added this listing.'}{' '}
+                  {participantCount(existingPlan)} {participantCount(existingPlan) === 1 ? 'family is' : 'families are'} coordinating there.
+                </Text>
+                <SecondaryButton label="open existing plan →" onPress={() => router.replace(`/plan/${existingPlan.activity.id}` as never)} />
+                <Pressable onPress={() => setCreateSeparatePlan(true)} style={{ alignSelf: 'center', padding: 6 }}>
+                  <Text style={styles.separateText}>this is actually a separate plan</Text>
+                </Pressable>
+              </View>
+            ) : null}
+          </Section>
+
+          <View pointerEvents={importing || saving || !canEdit ? 'none' : 'auto'} style={{ gap: 16, opacity: importing ? 0.6 : 1 }}>
+          <Section eyebrow="THE PLAN" title="what’s happening?">
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <TextInput editable={!importing && !saving && canEdit} value={emoji} onChangeText={setEmoji} maxLength={4} accessibilityLabel="Plan emoji" style={[styles.field, { width: 58, textAlign: 'center', fontSize: 22, paddingHorizontal: 4 }]} />
+              <TextInput accessibilityLabel="Plan name" editable={!importing && !saving && canEdit} value={name} onChangeText={setName} maxLength={140} placeholder="Saturday farmers market" placeholderTextColor={colors.taupe} style={[styles.field, { flex: 1 }]} />
             </View>
-          ) : (
-            <Pressable onPress={() => { setEndDate(date); setEndTime(allDay ? '' : defaultEndTime(time)); }} style={styles.addEndButton}>
-              <Icon name="plus.circle" size={18} color={colors.terracotta} />
-              <Text style={styles.secondaryText}>add an end date or camp range</Text>
-            </Pressable>
-          )}
-          <View style={styles.toggleRow}>
-            <View style={{ flex: 1 }}><Text style={styles.rowLabel}>All-day plan</Text><Text style={styles.help}>Useful for camp weeks and day trips.</Text></View>
-            <Switch value={allDay} onValueChange={setAllDay} trackColor={{ true: colors.terracotta }} />
+            <TextInput accessibilityLabel="Plan details" editable={!importing && !saving && canEdit} value={description} onChangeText={setDescription} maxLength={600} multiline placeholder="A few useful details for other parents…" placeholderTextColor={colors.taupe} style={[styles.field, styles.multiline]} />
+            <TextInput accessibilityLabel="Place name" editable={!importing && !saving && canEdit} value={locationName} onChangeText={setLocationName} placeholder="Place name" placeholderTextColor={colors.taupe} style={styles.field} />
+            <TextInput accessibilityLabel="Address or meetup note" editable={!importing && !saving && canEdit} value={locationAddress} onChangeText={setLocationAddress} placeholder="Address or meetup note" placeholderTextColor={colors.taupe} style={styles.field} />
+          </Section>
+
+          <Section eyebrow="WHEN" title="pick a day">
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              {date ? <PickerField label="START DATE" mode="date" dateValue={date} timeValue={time} onChange={setDate} /> : <AddTimeButton label="CHOOSE A DAY" onPress={() => setDate(formatDateInput(initialStart))} />}
+              {!allDay ? time ? (
+                <PickerField label="TIME" mode="time" dateValue={date} timeValue={time} onChange={setTime} compact />
+              ) : (
+                <AddTimeButton label="ADD TIME" onPress={() => setTime('09:00')} />
+              ) : null}
+            </View>
+            {endDate ? (
+              <View style={{ gap: 8 }}>
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <PickerField label="END DATE" mode="date" dateValue={endDate} timeValue={endTime || time} onChange={setEndDate} minimumDate={dateFromInputs(date, time)} />
+                  {!allDay ? endTime ? (
+                    <PickerField label="TIME" mode="time" dateValue={endDate} timeValue={endTime} onChange={setEndTime} compact />
+                  ) : (
+                    <AddTimeButton label="END TIME" onPress={() => setEndTime(defaultEndTime(time))} />
+                  ) : null}
+                </View>
+                <Pressable onPress={() => { setEndDate(''); setEndTime(''); }} style={{ alignSelf: 'flex-start', paddingVertical: 4 }}>
+                  <Text style={styles.separateText}>remove end date</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <Pressable onPress={() => { setEndDate(date); setEndTime(allDay ? '' : defaultEndTime(time)); }} style={styles.addEndButton}>
+                <Icon name="plus.circle" size={18} color={colors.terracotta} />
+                <Text style={styles.secondaryText}>add an end date or camp range</Text>
+              </Pressable>
+            )}
+            {!date || (!allDay && !time) ? <Text style={styles.help}>Choose a day and a time, or mark this as an all-day plan.</Text> : null}
+            <View style={styles.toggleRow}>
+              <View style={{ flex: 1 }}><Text style={styles.rowLabel}>All-day plan</Text><Text style={styles.help}>Useful for camp weeks and day trips.</Text></View>
+              <Switch accessibilityLabel="All-day plan" value={allDay} onValueChange={setAllDay} trackColor={{ true: colors.terracotta }} />
+            </View>
+          </Section>
+
+          <Section eyebrow="WHO CAN SEE IT" title="choose the audience">
+            {AUDIENCES.map((audience) => {
+              const selected = visibility === audience.value;
+              return (
+                <Pressable key={audience.value} accessibilityRole="radio" accessibilityState={{ selected }} onPress={() => setVisibility(audience.value)} style={[styles.audienceCard, selected && styles.audienceSelected]}>
+                  <View style={[styles.audienceIcon, selected && { backgroundColor: colors.terracotta }]}><Icon name={audience.icon} size={19} color={selected ? colors.white : colors.terracotta} /></View>
+                  <View style={{ flex: 1 }}><Text style={styles.rowLabel}>{audience.label}</Text><Text style={styles.help}>{audience.detail}</Text></View>
+                  {selected ? <Icon name="check.circle" size={20} color={colors.terracotta} /> : null}
+                </Pressable>
+              );
+            })}
+
+            {visibility === 'invited' ? (
+              <View style={{ gap: 8, paddingTop: 4 }}>
+                <Text style={styles.eyebrow}>CHOOSE CONNECTIONS · {invitedIds.size} SELECTED</Text>
+                {connections.length ? connections.map((row) => {
+                  const selected = invitedIds.has(row.parent.id);
+                  return (
+                    <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: selected }} key={row.parent.id} onPress={() => toggleInvite(row.parent.id)} style={[styles.connectionRow, selected && { borderColor: colors.terracotta, backgroundColor: '#FFF6EF' }]}>
+                      <AvatarCircle initials={row.parent.avatar_initials} tone={row.parent.avatar_color} imageUrl={row.parent.avatar_url} size={38} />
+                      <View style={{ flex: 1 }}><Text style={styles.rowLabel}>{row.parent.display_name}</Text><Text style={styles.help}>{row.parent.neighborhood ?? 'Village connection'}</Text></View>
+                      <Icon name={selected ? 'check.circle' : 'plus.circle'} size={21} color={selected ? colors.terracotta : colors.taupe} />
+                    </Pressable>
+                  );
+                }) : <Text style={styles.help}>Add a connection in Your Village before creating an invited-only plan.</Text>}
+              </View>
+            ) : null}
+          </Section>
+
           </View>
-        </Section>
 
-        <Section eyebrow="WHO CAN SEE IT" title="choose the audience">
-          {AUDIENCES.map((audience) => {
-            const selected = visibility === audience.value;
-            return (
-              <Pressable key={audience.value} accessibilityRole="radio" accessibilityState={{ selected }} onPress={() => setVisibility(audience.value)} style={[styles.audienceCard, selected && styles.audienceSelected]}>
-                <View style={[styles.audienceIcon, selected && { backgroundColor: colors.terracotta }]}><Icon name={audience.icon} size={19} color={selected ? colors.white : colors.terracotta} /></View>
-                <View style={{ flex: 1 }}><Text style={styles.rowLabel}>{audience.label}</Text><Text style={styles.help}>{audience.detail}</Text></View>
-                {selected ? <Icon name="check.circle" size={20} color={colors.terracotta} /> : null}
-              </Pressable>
-            );
-          })}
-
-          {visibility === 'invited' ? (
-            <View style={{ gap: 8, paddingTop: 4 }}>
-              <Text style={styles.eyebrow}>CHOOSE CONNECTIONS</Text>
-              {connections.length ? connections.map((row) => {
-                const selected = invitedIds.has(row.parent.id);
-                return (
-                  <Pressable key={row.parent.id} onPress={() => toggleInvite(row.parent.id)} style={[styles.connectionRow, selected && { borderColor: colors.terracotta, backgroundColor: '#FFF6EF' }]}>
-                    <AvatarCircle initials={row.parent.avatar_initials} tone={row.parent.avatar_color} imageUrl={row.parent.avatar_url} size={38} />
-                    <View style={{ flex: 1 }}><Text style={styles.rowLabel}>{row.parent.display_name}</Text><Text style={styles.help}>{row.parent.neighborhood ?? 'Village connection'}</Text></View>
-                    <Icon name={selected ? 'check.circle' : 'plus.circle'} size={21} color={selected ? colors.terracotta : colors.taupe} />
-                  </Pressable>
-                );
-              }) : <Text style={styles.help}>Add a connection in Your Village before creating an invited-only plan.</Text>}
-            </View>
-          ) : null}
-        </Section>
-
-        {error ? <Text selectable style={styles.error}>{error}</Text> : null}
-        <TerracottaButton label={saving ? 'saving plan…' : editing ? 'save changes →' : 'publish plan →'} onPress={save} disabled={saving || !name.trim() || (!allDay && !time) || Boolean(existingPlan && !createSeparatePlan)} fullWidth />
-      </ScrollView>
+          {error ? <Text selectable accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
+          <TerracottaButton label={saving ? 'saving plan…' : editing ? 'save changes →' : 'publish plan →'} onPress={save} disabled={saving || importing || !canEdit || !name.trim() || !date || (!allDay && !time) || Boolean(existingPlan && !createSeparatePlan)} fullWidth />
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -407,8 +453,8 @@ function AddTimeButton({ label, onPress }: { label: string; onPress: () => void 
   );
 }
 
-function SecondaryButton({ label, loading, onPress }: { label: string; loading?: boolean; onPress: () => void }) {
-  return <Pressable disabled={loading} onPress={onPress} style={styles.secondaryButton}>{loading ? <ActivityIndicator size="small" color={colors.terracotta} /> : <Text style={styles.secondaryText}>{label}</Text>}</Pressable>;
+function SecondaryButton({ label, loading, disabled = false, onPress }: { label: string; loading?: boolean; disabled?: boolean; onPress: () => void }) {
+  return <Pressable accessibilityRole="button" disabled={loading || disabled} onPress={onPress} style={styles.secondaryButton}>{loading ? <ActivityIndicator size="small" color={colors.terracotta} /> : <Text style={styles.secondaryText}>{label}</Text>}</Pressable>;
 }
 
 function nextFriendlyStart(): Date {

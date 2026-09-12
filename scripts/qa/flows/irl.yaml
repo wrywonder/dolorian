@@ -1,0 +1,45 @@
+appId: com.dolorian.app
+onFlowComplete:
+  - runScript:
+      file: irl-control.js
+      env:
+        MODE: clear
+---
+- openLink: dolorian://irl
+- assertVisible: "I’m here · come join.*"
+- takeScreenshot: irl-before-visit
+- tapOn: "I’m here · come join.*"
+- assertVisible: "where’s the fun.*"
+- tapOn: "Dolores Park"
+- takeScreenshot: irl-place-picker
+- runScript:
+    file: irl-control.js
+    env:
+      MODE: after-share
+- tapOn: "share this visit.*"
+- assertVisible: "I’m heading out"
+- assertVisible: ".*local test server.*"
+- runScript:
+    file: irl-control.js
+    env:
+      MODE: verify-shared
+- takeScreenshot: irl-shared-refresh-failed
+- runScript:
+    file: irl-control.js
+    env:
+      MODE: stop-failure
+- tapOn: "I’m heading out"
+- assertVisible: ".*local test server.*"
+- assertVisible: "I’m heading out"
+- takeScreenshot: irl-stop-failed
+- runScript:
+    file: irl-control.js
+    env:
+      MODE: clear
+- tapOn: "I’m heading out"
+- assertVisible: "I’m here · come join.*"
+- runScript:
+    file: irl-control.js
+    env:
+      MODE: verify-stopped
+- takeScreenshot: irl-stopped

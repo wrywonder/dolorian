@@ -1,4 +1,5 @@
-import { Image, Text, View } from 'react-native';
+import { useState } from 'react';
+import { Image, Pressable, Text, View } from 'react-native';
 import { colors, fonts } from '@/lib/constants';
 import {
   AvatarCircle,
@@ -8,7 +9,9 @@ import {
 } from '@/components/ui';
 import { useProfileLink } from '@/hooks/useProfileLink';
 import { stickerStamp } from '@/lib/format';
+import { captionPreview } from '@/lib/post-engagement';
 import { PostEngagementRow } from './PostEngagementRow';
+import { PlanMemoryLink } from './PlanMemoryLink';
 import type { FeedItem } from '@/types';
 
 type PhotoPostCardProps = {
@@ -51,6 +54,8 @@ export function PhotoPostCard({ item }: PhotoPostCardProps) {
       >
         {post.media_path ? (
           <Image
+            accessible
+            accessibilityLabel={`Photo shared by ${author.display_name}`}
             source={{ uri: post.media_path }}
             style={{ width: '100%', height: 300, borderRadius: 2 }}
             resizeMode="cover"
@@ -58,8 +63,8 @@ export function PhotoPostCard({ item }: PhotoPostCardProps) {
         ) : (
           <PhotoTile
             tone={tone}
-            height={300}
-            label={post.body ? post.body.toLowerCase() : 'family moment'}
+            height={140}
+            label="a little moment"
             radius={2}
           />
         )}
@@ -92,22 +97,11 @@ export function PhotoPostCard({ item }: PhotoPostCardProps) {
               {author.display_name.split(' ')[0]}
               {bylineSuffix}
             </Text>
-            {post.body ? (
-              <Text
-                numberOfLines={1}
-                style={{
-                  fontFamily: fonts.serif,
-                  fontSize: 14,
-                  color: colors.brownMid,
-                  lineHeight: 18,
-                }}
-              >
-                &ldquo;{post.body}&rdquo;
-              </Text>
-            ) : null}
           </View>
-          <PostEngagementRow item={item} />
         </View>
+        <View style={{ paddingHorizontal: 4 }}><PlanMemoryLink activity={item.activity} /></View>
+        {post.body ? <MemoryCaption key={post.id} body={post.body} /> : null}
+        <View style={{ paddingHorizontal: 4, marginTop: 12 }}><PostEngagementRow item={item} /></View>
       </View>
 
       {/* rotated date sticker — sits over the top-right corner of the polaroid */}
@@ -119,6 +113,23 @@ export function PhotoPostCard({ item }: PhotoPostCardProps) {
       <View style={{ position: 'absolute', bottom: 36, left: -8 }} pointerEvents="none">
         <Sparkle size={16} color={colors.terracotta} />
       </View>
+    </View>
+  );
+}
+
+function MemoryCaption({ body }: { body: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const preview = captionPreview(body);
+  return (
+    <View style={{ paddingHorizontal: 4, paddingTop: 10 }}>
+      <Text selectable style={{ fontFamily: fonts.serif, fontSize: 18, lineHeight: 24, color: colors.brownMid }}>
+        {expanded ? body : preview.text}
+      </Text>
+      {preview.truncated ? (
+        <Pressable accessibilityRole="button" accessibilityState={{ expanded }} onPress={() => setExpanded((current) => !current)} style={{ minHeight: 40, justifyContent: 'center', alignSelf: 'flex-start' }}>
+          <Text style={{ fontFamily: fonts.sansExtra, fontSize: 12, color: colors.terracotta }}>{expanded ? 'show less' : 'read the whole memory →'}</Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }

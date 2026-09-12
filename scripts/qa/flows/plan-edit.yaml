@@ -1,0 +1,80 @@
+appId: com.dolorian.app
+name: Plan edit - full title replacement and refreshed navigation
+# Run after plans.yaml has created a fictional QA preschool picnic. The native
+# client must be logged in as parent@example.test against scripts/qa/server.mjs.
+# Reads inspect fixture state; every change happens through the actual app UI.
+---
+# The fixture server appends newly created plans, so the last matching row is
+# the latest QA-created plan even when another plan was edited more recently.
+- evalScript: ${output.editPlan = json(http.get('http://127.0.0.1:54329/__qa/state').body).tables.activities.filter(function(p) { return p.created_by === '99000000-0000-4000-8000-000000000001' && p.name.indexOf('QA preschool picnic ') === 0 && !p.cancelled_at; }).slice(-1)[0]}
+- assertTrue:
+    condition: ${Boolean(output.editPlan)}
+    label: A fictional plan created by the Plans flow exists
+- evalScript: ${output.originalPlanName = output.editPlan.name}
+- evalScript: ${output.editedPlanName = 'QA preschool picnic edited ' + Date.now()}
+
+# Establish the list underneath detail so Back has an unambiguous destination.
+- openLink: "dolorian://plans"
+- runFlow:
+    when:
+      visible: "^Open$"
+    commands:
+      - tapOn: "^Open$"
+- assertVisible: "Upcoming"
+- tapOn: "Upcoming"
+- tapOn: "List"
+- runFlow:
+    when:
+      visible: "clear filters.*"
+    commands:
+      - tapOn: "clear filters.*"
+- scrollUntilVisible:
+    element:
+      text: "Open Today: come picnic"
+    direction: UP
+- openLink: ${'dolorian://plan/' + output.editPlan.id}
+- runFlow:
+    when:
+      visible: "^Open$"
+    commands:
+      - tapOn: "^Open$"
+- assertVisible: "plan details"
+- assertVisible: ${'.*' + output.originalPlanName + '.*'}
+- tapOn: "edit"
+- assertVisible: "make a change"
+- scrollUntilVisible:
+    element:
+      text: "Plan name.*"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Plan name.*"
+- longPressOn: "Plan name.*"
+- tapOn: "Select All"
+- eraseText: 1
+- inputText: ${output.editedPlanName}
+- pressKey: Enter
+- scrollUntilVisible:
+    element:
+      text: "save changes.*"
+    direction: DOWN
+- tapOn:
+    text: "save changes.*"
+    enabled: true
+- assertVisible: "plan details"
+- assertVisible: ${'.*' + output.editedPlanName + '.*'}
+- evalScript: ${output.persistedPlan = json(http.get('http://127.0.0.1:54329/__qa/state').body).tables.activities.filter(function(p) { return p.id === output.editPlan.id; })[0]}
+- assertTrue:
+    condition: ${output.persistedPlan && output.persistedPlan.name === output.editedPlanName}
+    label: The same plan persisted the complete replacement title exactly
+- takeScreenshot: plan-edit-refreshed-detail
+- tapOn: "Back"
+- assertVisible: "Upcoming"
+- assertNotVisible: "plan details"
+- scrollUntilVisible:
+    element:
+      text: ${'^Open ' + output.editedPlanName + '$'}
+    direction: DOWN
+    speed: 20
+    centerElement: true
+- assertVisible: ${'^Open ' + output.editedPlanName + '$'}
+- takeScreenshot: plan-edit-refreshed-list

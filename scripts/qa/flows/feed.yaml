@@ -1,0 +1,120 @@
+# Prerequisite: the local QA server is running and the development app is
+# already signed in as parent@example.test on a tab screen (see login.yaml).
+# All selectors use existing accessible labels or rendered copy; no coordinates.
+# HTTP and cleanup-hook syntax verified against official Maestro documentation:
+# https://docs.maestro.dev/advanced/javascript/make-http-s-requests
+# https://docs.maestro.dev/advanced/onflowstart-onflowcomplete-hooks
+appId: com.dolorian.app
+onFlowStart:
+  - runScript:
+      file: feed-control.js
+      env:
+        MODE: prepare
+onFlowComplete:
+  - runScript:
+      file: feed-control.js
+      env:
+        MODE: cleanup
+---
+# Round-trip tabs so the UI reads the prepared fixture and starts at the top.
+- openLink: dolorian://buzz
+- tapOn: "Plans"
+- tapOn: "Buzz"
+- extendedWaitUntil:
+    visible: "buzz"
+    timeout: 20000
+- scrollUntilVisible:
+    element:
+      text: "read the whole memory.*"
+    direction: DOWN
+- takeScreenshot: feed-caption-collapsed
+- tapOn: "read the whole memory.*"
+- scrollUntilVisible:
+    element:
+      text: "show less"
+    direction: DOWN
+- assertVisible: "show less"
+- assertVisible: ${output.feedCaption}
+- takeScreenshot: feed-caption-expanded
+- tapOn: "show less"
+
+# UI state and persisted state must agree for both halves of a reaction toggle.
+- scrollUntilVisible:
+    element:
+      text: ${output.feedAddLabel}
+    direction: DOWN
+- assertVisible:
+    text: ${output.feedAddLabel}
+    enabled: true
+- tapOn: ${output.feedAddLabel}
+- assertVisible:
+    text: ${output.feedRemoveLabel}
+    enabled: true
+- runScript:
+    file: feed-control.js
+    env:
+      MODE: verify-added
+- takeScreenshot: feed-reaction-added
+- tapOn: ${output.feedRemoveLabel}
+- assertVisible:
+    text: ${output.feedAddLabel}
+    enabled: true
+- runScript:
+    file: feed-control.js
+    env:
+      MODE: verify-removed
+
+# Fail the actual comment POST, assert the words remain, then retry the same draft.
+- tapOn: ${output.feedCommentsLabel}
+- assertVisible: "Add a comment.*"
+- tapOn: "Add a comment.*"
+- inputText: ${output.feedComment}
+- runScript:
+    file: feed-control.js
+    env:
+      MODE: fail-comment
+- tapOn: "Send comment"
+- assertVisible: "Your comment didn.t send.*"
+- assertVisible: ${output.feedComment}
+- runScript:
+    file: feed-control.js
+    env:
+      MODE: verify-comment-failed
+- takeScreenshot: feed-comment-failure-draft-retained
+- runScript:
+    file: feed-control.js
+    env:
+      MODE: clear-failure
+- tapOn:
+    text: "Send comment"
+    enabled: true
+- assertNotVisible: "Your comment didn.t send.*"
+# Require the rendered comment above the composer, not the still-pending draft.
+- assertVisible:
+    text: ${output.feedComment}
+    above:
+      text: "Add a comment.*"
+- assertVisible:
+    text: "Send comment"
+    enabled: false
+- runScript:
+    file: feed-control.js
+    env:
+      MODE: verify-comment-saved
+- takeScreenshot: feed-comment-retry-saved
+- tapOn: "Close comments"
+
+# The memory retains a usable connection to its past plan. Composition itself is
+# a separate journey, so leave this flow on Buzz after verifying the destination.
+- scrollUntilVisible:
+    element:
+      text: "View plan: Last weekend at the park"
+    direction: UP
+- tapOn: "View plan: Last weekend at the park"
+- extendedWaitUntil:
+    visible: "Last weekend at the park"
+    timeout: 20000
+- assertVisible: "plan details"
+- takeScreenshot: feed-linked-plan
+- tapOn: "Back"
+- assertVisible: "Buzz"

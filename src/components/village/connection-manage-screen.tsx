@@ -16,14 +16,12 @@ import { AvatarCircle, Icon, TerracottaButton } from '@/components/ui';
 import { colors, fonts, radii } from '@/lib/constants';
 import { data } from '@/lib/data';
 import { readableError } from '@/lib/error-message';
-import type { ConnectionCircle, ConnectionPreference, ContactExchange, Parent, UUID } from '@/types';
+import type { ConnectionPreference, ContactExchange, Parent, UUID } from '@/types';
 
 export function ConnectionManageScreen({ parentId }: { parentId: UUID }) {
   const [parent, setParent] = useState<Parent | null>(null);
   const [preference, setPreference] = useState<ConnectionPreference | null>(null);
   const [contact, setContact] = useState<ContactExchange | null>(null);
-  const [circles, setCircles] = useState<ConnectionCircle[]>([]);
-  const [selectedCircles, setSelectedCircles] = useState<Set<UUID>>(new Set());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [contactBusy, setContactBusy] = useState(false);
@@ -35,16 +33,13 @@ export function ConnectionManageScreen({ parentId }: { parentId: UUID }) {
       data.getProfile(parentId),
       data.getConnectionViews(),
       data.getContactExchange(parentId),
-      data.getConnectionCircles(),
-    ]).then(([profile, views, exchange, nextCircles]) => {
+    ]).then(([profile, views, exchange]) => {
       if (!active) return;
       const view = views.find((item) => item.parent.id === parentId && item.connection.status === 'connected');
       if (!profile || !view) throw new Error('This connection is no longer available.');
       setParent(profile.parent);
       setPreference(view.preference);
       setContact(exchange);
-      setCircles(nextCircles);
-      setSelectedCircles(new Set(nextCircles.filter((circle) => circle.memberIds.includes(parentId)).map((circle) => circle.id)));
     }).catch((cause) => {
       if (active) setError(readableError(cause, 'Could not load connection settings.'));
     }).finally(() => { if (active) setLoading(false); });
@@ -57,11 +52,6 @@ export function ConnectionManageScreen({ parentId }: { parentId: UUID }) {
     setError(null);
     try {
       await data.setConnectionPreferences(parentId, preference);
-      await Promise.all(circles.map((circle) => {
-        const members = new Set(circle.memberIds);
-        if (selectedCircles.has(circle.id)) members.add(parentId); else members.delete(parentId);
-        return data.setConnectionCircleMembers(circle.id, [...members]);
-      }));
       router.back();
     } catch (cause) {
       setError(readableError(cause, 'Could not save connection settings.'));
@@ -163,19 +153,6 @@ export function ConnectionManageScreen({ parentId }: { parentId: UUID }) {
             ) : <Text style={{ fontFamily: fonts.serif, fontSize: 13, color: colors.taupe, padding: 14, borderTopWidth: 1, borderTopColor: colors.rule }}>{parent.display_name.split(' ')[0]} hasn’t shared a number with you.</Text>}
           </Card>
 
-          {circles.length ? (
-            <Card title="circles" eyebrow="ORGANIZE YOUR VILLAGE">
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, padding: 14 }}>
-                {circles.map((circle) => {
-                  const selected = selectedCircles.has(circle.id);
-                  return <Pressable key={circle.id} onPress={() => setSelectedCircles((current) => {
-                    const next = new Set(current); if (selected) next.delete(circle.id); else next.add(circle.id); return next;
-                  })} style={[styles.circleChip, selected && { backgroundColor: colors.dark, borderColor: colors.dark }]}><Text style={{ fontFamily: fonts.sansExtra, fontSize: 11, color: selected ? colors.white : colors.brownMid }}>{circle.emoji} {circle.name}</Text></Pressable>;
-                })}
-              </View>
-            </Card>
-          ) : null}
-
           {error ? <Text selectable style={{ fontFamily: fonts.sansSemi, fontSize: 12, lineHeight: 18, color: colors.terracotta }}>{error}</Text> : null}
           <TerracottaButton label={saving ? 'saving…' : 'save connection settings →'} onPress={save} disabled={saving} fullWidth />
 
@@ -214,6 +191,5 @@ const styles = {
   rowLabel: { fontFamily: fonts.sansExtra, fontSize: 13, color: colors.dark } as const,
   noteField: { minHeight: 78, marginTop: 8, padding: 11, borderRadius: radii.md, backgroundColor: colors.cream, borderWidth: 1, borderColor: colors.rule, fontFamily: fonts.sansSemi, fontSize: 13, lineHeight: 18, color: colors.dark, textAlignVertical: 'top' } as const,
   actionRow: { minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: 11, paddingHorizontal: 13, borderBottomWidth: 1, borderBottomColor: colors.rule } as const,
-  circleChip: { paddingHorizontal: 12, paddingVertical: 9, borderRadius: radii.pill, backgroundColor: colors.cream, borderWidth: 1, borderColor: colors.rule } as const,
   contactButton: { flex: 1, minHeight: 39, borderRadius: radii.md, borderWidth: 1, borderColor: colors.rule, backgroundColor: colors.cream, alignItems: 'center', justifyContent: 'center' } as const,
 };

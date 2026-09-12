@@ -4,6 +4,7 @@ import { AvatarCircle } from '@/components/ui';
 import { useProfileLink } from '@/hooks/useProfileLink';
 import { relativeShort } from '@/lib/format';
 import { PostEngagementRow } from './PostEngagementRow';
+import { PlanMemoryLink } from './PlanMemoryLink';
 import type { FeedItem } from '@/types';
 
 type QuestionPostCardProps = {
@@ -92,6 +93,8 @@ export function QuestionPostCard({ item }: QuestionPostCardProps) {
             </View>
           ) : null}
         </View>
+
+        <PlanMemoryLink activity={item.activity} />
 
         <Text
           style={{

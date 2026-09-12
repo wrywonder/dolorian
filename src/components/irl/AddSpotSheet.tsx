@@ -5,13 +5,14 @@ import {
   Modal,
   Platform,
   Pressable,
+  ScrollView,
   Text,
   TextInput,
   View,
 } from 'react-native';
 import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
-import { colors, fonts } from '@/lib/constants';
+import { colors, fonts, spacing } from '@/lib/constants';
 import { data } from '@/lib/data';
 import { TerracottaButton } from '@/components/ui';
 import type { Venue } from '@/types';
@@ -38,7 +39,7 @@ const TYPE_CHOICES: { key: Venue['venue_type']; label: string }[] = [
 
 /**
  * Adds a named hangout at the user's current position. Creating a hangout
- * never shares presence by itself; geofencing handles that on a later visit.
+ * never writes presence itself. Active geofencing may detect the new region.
  */
 export function AddSpotSheet({ open, onClose, onCreated }: AddSpotSheetProps) {
   const [name, setName] = useState('');
@@ -55,8 +56,9 @@ export function AddSpotSheet({ open, onClose, onCreated }: AddSpotSheetProps) {
   };
 
   const save = async () => {
-    if (!name.trim()) {
-      setError('give the spot a name first');
+    if (saving) return;
+    if (name.trim().length < 2) {
+      setError('give the spot a name with at least 2 characters');
       return;
     }
     setError(null);
@@ -89,17 +91,20 @@ export function AddSpotSheet({ open, onClose, onCreated }: AddSpotSheetProps) {
   };
 
   return (
-    <Modal visible={open} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible={open} transparent animationType="slide" onRequestClose={() => { if (!saving) onClose(); }}>
       <KeyboardAvoidingView
         style={{ flex: 1, justifyContent: 'flex-end' }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <Pressable
           style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(45,36,27,0.35)' }}
+          disabled={saving}
           onPress={onClose}
         />
-        <View
-          style={{
+        <ScrollView
+          keyboardShouldPersistTaps="handled"
+          style={{ maxHeight: '88%', backgroundColor: colors.cream, borderTopLeftRadius: 28, borderTopRightRadius: 28 }}
+          contentContainerStyle={{
             backgroundColor: colors.cream,
             borderTopLeftRadius: 28,
             borderTopRightRadius: 28,
@@ -131,7 +136,13 @@ export function AddSpotSheet({ open, onClose, onCreated }: AddSpotSheetProps) {
             add a hangout spot
           </Text>
 
+          <Text style={{ fontFamily: fonts.sans, fontSize: 12, lineHeight: 18, color: colors.brownMid, marginBottom: spacing.md }}>
+            Add a public place, like a park or café. Its name and map location are visible in Village’s place directory. Your visits are shared separately with your connections.
+          </Text>
           <TextInput
+            accessibilityLabel="Public place name"
+            maxLength={100}
+            editable={!saving}
             value={name}
             onChangeText={setName}
             placeholder="e.g. the good sandbox"
@@ -149,10 +160,14 @@ export function AddSpotSheet({ open, onClose, onCreated }: AddSpotSheetProps) {
           />
 
           {/* Emoji picker */}
-          <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
             {EMOJI_CHOICES.map((e) => (
               <Pressable
                 key={e}
+                accessibilityRole="button"
+                accessibilityLabel={`Place emoji ${e}`}
+                accessibilityState={{ selected: emoji === e }}
+                disabled={saving}
                 onPress={() => setEmoji(e)}
                 style={{
                   width: 38,
@@ -175,6 +190,9 @@ export function AddSpotSheet({ open, onClose, onCreated }: AddSpotSheetProps) {
             {TYPE_CHOICES.map((t) => (
               <Pressable
                 key={t.key}
+                accessibilityRole="button"
+                accessibilityState={{ selected: venueType === t.key }}
+                disabled={saving}
                 onPress={() => setVenueType(t.key)}
                 style={{
                   paddingHorizontal: 12,
@@ -216,7 +234,7 @@ export function AddSpotSheet({ open, onClose, onCreated }: AddSpotSheetProps) {
           ) : (
             <TerracottaButton label="save hangout →" onPress={save} />
           )}
-        </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </Modal>
   );

@@ -7,7 +7,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import * as Location from 'expo-location';
 import MapView, { Marker, type Region } from 'react-native-maps';
 import { colors, fonts, type AvatarTone } from '@/lib/constants';
@@ -70,10 +70,9 @@ function LiveMapContent({ pins, venues, meId }: LiveMapProps) {
 
     const centerOnUser = async () => {
       try {
-        let response = await Location.getForegroundPermissionsAsync();
-        if (response.status !== Location.PermissionStatus.GRANTED && response.canAskAgain) {
-          response = await Location.requestForegroundPermissionsAsync();
-        }
+        // Browsing friends and sharing a chosen venue need no device location.
+        // Ask only from an explicit action such as adding the place you are at.
+        const response = await Location.getForegroundPermissionsAsync();
         if (!active) return;
         if (response.status !== Location.PermissionStatus.GRANTED) {
           setPermission('denied');
@@ -129,7 +128,7 @@ function LiveMapContent({ pins, venues, meId }: LiveMapProps) {
       <MapView
         ref={mapRef}
         style={{ flex: 1 }}
-        initialRegion={DOLORES_PARK}
+        initialRegion={visibleVenues[0] ? { ...DOLORES_PARK, latitude: visibleVenues[0].lat, longitude: visibleVenues[0].lng } : DOLORES_PARK}
         showsUserLocation={permission === 'granted'}
         showsMyLocationButton={permission === 'granted'}
         showsCompass={false}
@@ -208,8 +207,8 @@ function LiveMapContent({ pins, venues, meId }: LiveMapProps) {
       {permission === 'denied' || permission === 'error' ? (
         <MapMessage
           text={permission === 'denied'
-            ? 'location is off — showing Dolores Park instead'
-            : 'couldn’t find you — showing the neighborhood map'}
+            ? 'showing your village’s places'
+            : 'your location is unavailable · showing village places'}
           position="top"
         />
       ) : null}
@@ -291,11 +290,14 @@ class MapErrorBoundary extends Component<{ children: ReactNode }, { failed: bool
         }}
       >
         <Text style={{ fontFamily: fonts.serif, fontSize: 22, color: colors.dark, textAlign: 'center' }}>
-          the live map needs a fresh development build
+          the map couldn’t load
         </Text>
         <Text style={{ fontFamily: fonts.sans, fontSize: 12, lineHeight: 18, color: colors.brownMid, textAlign: 'center', marginTop: 8 }}>
-          venues and check-ins are still safe — rebuild the native app to see them here.
+          You can still choose a place and share a visit.
         </Text>
+        <Pressable accessibilityRole="button" onPress={() => this.setState({ failed: false })} style={{ minHeight: 44, justifyContent: 'center', marginTop: 8 }}>
+          <Text style={{ fontFamily: fonts.sansBold, color: colors.terracotta }}>try the map again →</Text>
+        </Pressable>
       </View>
     );
   }

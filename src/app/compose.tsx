@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -11,15 +11,16 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
-import { colors, fonts } from '@/lib/constants';
+import { colors, fonts, radii } from '@/lib/constants';
 import { data } from '@/lib/data';
 import { uploadPostImage, type PickedImage } from '@/lib/storage';
-import { useCurrentParentId } from '@/hooks/useCurrentParentId';
+import { preparePostDraft } from '@/lib/post-draft';
 import { Icon, TerracottaButton } from '@/components/ui';
 import { DEFAULT_REACTION_EMOJI } from '@/types';
+import type { ActivitySocialProof } from '@/types';
 
 type PostKind = 'photo' | 'question' | 'text';
 
@@ -37,62 +38,110 @@ const KINDS: { key: PostKind; label: string; icon: string }[] = [
 const REACTION_CHOICES = [DEFAULT_REACTION_EMOJI, '🎉', '😂', '🥹', '✨', '🙌', '🦖'] as const;
 
 export default function ComposeScreen() {
-  const myId = useCurrentParentId();
+  const { activityId } = useLocalSearchParams<{ activityId?: string }>();
+  const [linkedPlanId, setLinkedPlanId] = useState(activityId ?? null);
+  const [plan, setPlan] = useState<ActivitySocialProof | null>(null);
+  const [planLoading, setPlanLoading] = useState(Boolean(activityId));
+  const [planError, setPlanError] = useState<string | null>(null);
   const [kind, setKind] = useState<PostKind>('photo');
   const [body, setBody] = useState('');
   const [image, setImage] = useState<PickedImage | null>(null);
   const [reactionEmoji, setReactionEmoji] = useState<string>(DEFAULT_REACTION_EMOJI);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const submitPending = useRef(false);
+  const planRequest = useRef(0);
+  const mounted = useRef(true);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
+
+  useEffect(() => { setLinkedPlanId(activityId ?? null); }, [activityId]);
+
+  const loadPlan = useCallback(async () => {
+    const version = ++planRequest.current;
+    setPlan(null);
+    setPlanError(null);
+    if (!linkedPlanId) { setPlanLoading(false); return; }
+    setPlanLoading(true);
+    try {
+      const next = await data.getPlan(linkedPlanId);
+      if (version !== planRequest.current) return;
+      if (!next) throw new Error('This plan is no longer available.');
+      setPlan(next);
+    } catch {
+      if (version === planRequest.current) setPlanError('This plan couldn’t load. Try again or remove it to share a standalone memory.');
+    } finally {
+      if (version === planRequest.current) setPlanLoading(false);
+    }
+  }, [linkedPlanId]);
+
+  useEffect(() => {
+    void loadPlan();
+    return () => { planRequest.current += 1; };
+  }, [loadPlan]);
 
   const pickImage = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      quality: 0.8,
-      allowsEditing: true,
-      aspect: [4, 3],
-      // base64 feeds the upload — RN's fetch(file://).blob() sends
-      // zero bytes to Supabase Storage (see storage.ts).
-      base64: true,
-    });
-    const asset = result.canceled ? null : result.assets[0];
-    if (asset) {
-      setImage({ uri: asset.uri, base64: asset.base64 ?? null });
+    if (submitPending.current) return;
+    setError(null);
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        quality: 0.8,
+        allowsEditing: true,
+        aspect: [4, 3],
+        // base64 feeds the upload — RN's fetch(file://).blob() sends
+        // zero bytes to Supabase Storage (see storage.ts).
+        base64: true,
+      });
+      const asset = result.canceled ? null : result.assets[0];
+      if (asset && mounted.current) {
+        setImage({ uri: asset.uri, base64: asset.base64 ?? null });
+      }
+    } catch {
+      if (mounted.current) setError('Your photo couldn’t open. Please choose it again.');
     }
   };
 
   const submit = async () => {
-    if (!myId) return;
-    if (kind === 'photo' && !image && !body.trim()) return;
-    if (kind !== 'photo' && !body.trim()) return;
+    if (submitPending.current || planLoading || (linkedPlanId && !plan)) return;
 
+    submitPending.current = true;
     setError(null);
     setSubmitting(true);
 
     try {
+      const draft = preparePostDraft(kind, body, image);
+      const parent = await data.getCurrentUser();
       let mediaPath: string | null = null;
-      if (image) {
-        mediaPath = await uploadPostImage(myId, image);
+      if (draft.image) {
+        mediaPath = await uploadPostImage(parent.id, draft.image);
       }
 
       await data.createPost({
-        author_id: myId,
-        type: kind,
-        body: body.trim() || null,
+        author_id: parent.id,
+        type: draft.type,
+        body: draft.body,
         media_path: mediaPath,
-        activity_id: null,
+        activity_id: plan?.activity.id ?? null,
         story_id: null,
         location_share_mode: 'none',
         venue_id: null,
         reaction_emoji: reactionEmoji === DEFAULT_REACTION_EMOJI ? null : reactionEmoji,
       });
 
+      // System back gestures can leave this screen even while cancel is disabled.
+      // A completed write must not pop the screen the parent has since opened.
+      if (!mounted.current) return;
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       router.back();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'something went wrong — try again');
+      if (mounted.current) setError(e instanceof Error ? e.message : 'something went wrong — try again');
     } finally {
-      setSubmitting(false);
+      submitPending.current = false;
+      if (mounted.current) setSubmitting(false);
     }
   };
 
@@ -117,7 +166,7 @@ export default function ComposeScreen() {
             paddingVertical: 12,
           }}
         >
-          <Pressable onPress={() => router.back()} hitSlop={8}>
+          <Pressable onPress={() => router.back()} hitSlop={8} disabled={submitting} accessibilityRole="button">
             <Text
               style={{
                 fontFamily: fonts.serif,
@@ -136,7 +185,7 @@ export default function ComposeScreen() {
               letterSpacing: -0.3,
             }}
           >
-            new post
+            {linkedPlanId ? 'share a memory' : 'new post'}
           </Text>
           <View style={{ width: 50 }} />
         </View>
@@ -145,6 +194,17 @@ export default function ComposeScreen() {
           contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 40 }}
           keyboardShouldPersistTaps="handled"
         >
+          <Text style={{ fontFamily: fonts.sans, fontSize: 12, color: colors.brownMid, marginBottom: 14 }}>Shared with all your connections</Text>
+          {linkedPlanId ? (
+            <View style={{ padding: 14, marginBottom: 18, gap: 8, borderWidth: 1, borderColor: colors.rule, borderRadius: radii.md, backgroundColor: colors.surface }}>
+              <Text style={{ fontFamily: fonts.monoBold, fontSize: 10, color: colors.taupe }}>A MEMORY FROM</Text>
+              {planLoading ? <ActivityIndicator color={colors.terracotta} /> : plan ? <Text style={{ fontFamily: fonts.serifRegular, fontSize: 22, color: colors.dark }}>{plan.activity.emoji ?? '✨'} {plan.activity.name}</Text> : <Text accessibilityRole="alert" style={{ fontFamily: fonts.sans, fontSize: 13, lineHeight: 19, color: colors.brownMid }}>{planError}</Text>}
+              <View style={{ flexDirection: 'row', gap: 20 }}>
+                {planError ? <Pressable accessibilityRole="button" disabled={submitting} onPress={loadPlan} style={{ minHeight: 40, justifyContent: 'center' }}><Text style={{ fontFamily: fonts.sansExtra, fontSize: 12, color: colors.terracotta }}>try again</Text></Pressable> : null}
+                <Pressable accessibilityRole="button" disabled={submitting} onPress={() => { planRequest.current += 1; setLinkedPlanId(null); setPlan(null); setPlanLoading(false); }} style={{ minHeight: 40, justifyContent: 'center' }}><Text style={{ fontFamily: fonts.sansBold, fontSize: 12, color: colors.brownMid }}>remove plan</Text></Pressable>
+              </View>
+            </View>
+          ) : null}
           {/* Kind picker */}
           <View
             style={{
@@ -156,6 +216,9 @@ export default function ComposeScreen() {
             {KINDS.map((k) => (
               <Pressable
                 key={k.key}
+                disabled={submitting}
+                accessibilityRole="button"
+                accessibilityState={{ selected: kind === k.key, disabled: submitting }}
                 onPress={() => {
                   Haptics.selectionAsync().catch(() => {});
                   setKind(k.key);
@@ -189,6 +252,9 @@ export default function ComposeScreen() {
           {kind === 'photo' ? (
             <Pressable
               onPress={pickImage}
+              disabled={submitting}
+              accessibilityRole="button"
+              accessibilityLabel={image ? 'Change photo' : 'Add photo'}
               style={{
                 height: 220,
                 borderRadius: 16,
@@ -224,11 +290,14 @@ export default function ComposeScreen() {
               )}
             </Pressable>
           ) : null}
+          {kind === 'photo' && image ? <Pressable accessibilityRole="button" disabled={submitting} onPress={() => setImage(null)} style={{ minHeight: 40, justifyContent: 'center', alignSelf: 'flex-start' }}><Text style={{ fontFamily: fonts.sansBold, fontSize: 12, color: colors.terracotta }}>remove photo</Text></Pressable> : null}
 
           {/* Body input */}
           <TextInput
             value={body}
             onChangeText={setBody}
+            editable={!submitting}
+            accessibilityLabel={kind === 'photo' ? 'Photo caption' : kind === 'question' ? 'Question' : 'Memory or thought'}
             placeholder={
               kind === 'question'
                 ? 'ask your village something...'
@@ -269,6 +338,10 @@ export default function ComposeScreen() {
               {REACTION_CHOICES.map((e) => (
                 <Pressable
                   key={e}
+                  disabled={submitting}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Use ${e} as the reaction`}
+                  accessibilityState={{ selected: reactionEmoji === e, disabled: submitting }}
                   onPress={() => {
                     Haptics.selectionAsync().catch(() => {});
                     setReactionEmoji(e);
@@ -312,7 +385,7 @@ export default function ComposeScreen() {
               <TerracottaButton
                 label={kind === 'question' ? 'ask away →' : 'share it →'}
                 onPress={submit}
-                disabled={!canSubmit}
+                disabled={!canSubmit || planLoading || Boolean(linkedPlanId && !plan)}
               />
             )}
           </View>

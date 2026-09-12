@@ -7,19 +7,19 @@ import { TwinkleSparkle } from './TwinkleSparkle';
 import type { VisibilityMode } from '@/types';
 
 type VisibilityChipProps = {
-  /** Drives the dot animation + text tone. When false, chip reads "tucked away". */
+  /** Whether a current visit is actually shared, independent of automatic mode. */
   visible?: boolean;
   mode?: VisibilityMode;
   /** Small avatar stack of other parents currently visible. */
   visibleParents?: { initials: string; tone: AvatarTone; imageUrl?: string | null }[];
+  /** Opens IRL to inspect or manage sharing; never silently toggles a setting. */
   onPress?: () => void;
   style?: ViewStyle;
 };
 
 /**
- * Always-on visibility indicator that lives in the top-right of Buzz
- * and IRL headers. Single source of truth — both screens read the same
- * zustand slice and tap-to-toggle propagates everywhere.
+ * Current visit status in Buzz and IRL. Both headers use the shared presence
+ * store; Buzz opens IRL when tapped so sharing changes stay explicit.
  */
 export function VisibilityChip({
   visible = true,
@@ -29,7 +29,10 @@ export function VisibilityChip({
   style,
 }: VisibilityChipProps) {
   const resolvedMode = mode ?? (visible ? 'on' : 'disabled');
-  const active = resolvedMode !== 'disabled';
+  const active = visible || resolvedMode !== 'disabled';
+  const accessibilityLabel = visible
+    ? 'You are sharing a visit with your connections.'
+    : `You are not sharing a visit. Automatic sharing is ${resolvedMode === 'auto' ? 'set to after five minutes' : resolvedMode === 'on' ? 'set to on arrival' : 'off'}.`;
   const handlePress = () => {
     if (!onPress) return;
     Haptics.selectionAsync().catch(() => {});
@@ -38,6 +41,9 @@ export function VisibilityChip({
 
   const content = (
     <View
+      accessible={!onPress}
+      accessibilityRole="text"
+      accessibilityLabel={accessibilityLabel}
       style={[
         {
           flexDirection: 'row',
@@ -83,7 +89,7 @@ export function VisibilityChip({
           letterSpacing: 0.1,
         }}
       >
-        {resolvedMode === 'auto' ? 'out & about · auto' : resolvedMode === 'on' ? 'out & about · on' : 'off the map'}
+        {visible ? 'sharing a visit' : resolvedMode === 'auto' ? 'auto · not sharing' : resolvedMode === 'on' ? 'on arrival · ready' : 'off the map'}
       </Text>
 
       {active && visibleParents.length > 0 ? (
@@ -121,7 +127,7 @@ export function VisibilityChip({
   );
 
   return onPress ? (
-    <Pressable onPress={handlePress} hitSlop={6}>
+    <Pressable accessibilityRole="button" accessibilityLabel={accessibilityLabel} accessibilityHint="Opens IRL to view or manage your sharing." onPress={handlePress} hitSlop={6}>
       {content}
     </Pressable>
   ) : (

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -15,6 +15,7 @@ import { colors, fonts, type AvatarTone } from '@/lib/constants';
 import { data } from '@/lib/data';
 import { AvatarCircle, Icon } from '@/components/ui';
 import { relativeShort } from '@/lib/format';
+import { COMMENT_MAX_LENGTH, commentLength, prepareCommentBody } from '@/lib/post-engagement';
 import type { CommentView, UUID } from '@/types';
 
 type CommentsSheetProps = {
@@ -29,13 +30,30 @@ export function CommentsSheet({ open, postId, onClose, onCommentAdded }: Comment
   const [comments, setComments] = useState<CommentView[] | null>(null);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const requestVersion = useRef(0);
+  const sendPending = useRef(false);
+  const mounted = useRef(true);
+  const draftLength = commentLength(draft);
+  const tooLong = draftLength > COMMENT_MAX_LENGTH;
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; requestVersion.current += 1; };
+  }, []);
 
   const load = useCallback(async () => {
+    const version = ++requestVersion.current;
+    setLoadError(null);
     try {
-      setComments(await data.getPostComments(postId));
+      const nextComments = await data.getPostComments(postId);
+      if (version === requestVersion.current && mounted.current) setComments(nextComments);
     } catch (e) {
       console.warn('comments load failed', e);
-      setComments([]);
+      if (version === requestVersion.current && mounted.current) {
+        setLoadError('Comments couldn’t load. Your draft is safe.');
+      }
     }
   }, [postId]);
 
@@ -44,22 +62,33 @@ export function CommentsSheet({ open, postId, onClose, onCommentAdded }: Comment
       setComments(null);
       load();
     }
+    return () => { requestVersion.current += 1; };
   }, [open, load]);
 
   const send = async () => {
-    const body = draft.trim();
-    if (!body || sending) return;
+    if (sendPending.current) return;
+    let body: string;
+    try { body = prepareCommentBody(draft); }
+    catch (cause) {
+      setSendError(cause instanceof Error ? cause.message : 'Check your comment and try again.');
+      return;
+    }
+    sendPending.current = true;
     setSending(true);
+    setSendError(null);
     try {
       await data.addComment(postId, body);
+      if (!mounted.current) return;
       Haptics.selectionAsync().catch(() => {});
       setDraft('');
       onCommentAdded();
       await load();
     } catch (e) {
       console.warn('comment send failed', e);
+      if (mounted.current) setSendError('Your comment didn’t send. Try again — your words are still here.');
     } finally {
-      setSending(false);
+      sendPending.current = false;
+      if (mounted.current) setSending(false);
     }
   };
 
@@ -70,6 +99,8 @@ export function CommentsSheet({ open, postId, onClose, onCommentAdded }: Comment
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Close comments"
           style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(45,36,27,0.35)' }}
           onPress={onClose}
         />
@@ -83,22 +114,23 @@ export function CommentsSheet({ open, postId, onClose, onCommentAdded }: Comment
             maxHeight: '75%',
           }}
         >
-          <Text
-            style={{
-              fontFamily: fonts.serif,
-              fontSize: 24,
-              color: colors.dark,
-              letterSpacing: -0.4,
-              paddingHorizontal: 22,
-              marginBottom: 12,
-            }}
-          >
-            comments
-          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 22, marginBottom: 12 }}>
+            <Text accessibilityRole="header" style={{ flex: 1, fontFamily: fonts.serif, fontSize: 24, color: colors.dark, letterSpacing: -0.4 }}>comments</Text>
+            <Pressable accessibilityRole="button" accessibilityLabel="Close comments" onPress={onClose} hitSlop={8} style={{ minHeight: 40, minWidth: 40, alignItems: 'center', justifyContent: 'center' }}>
+              <Icon name="x" size={18} color={colors.brownMid} />
+            </Pressable>
+          </View>
 
-          {comments === null ? (
+          {loadError ? (
+            <View style={{ paddingHorizontal: 22, gap: 8, marginBottom: 14 }}>
+              <Text accessibilityRole="alert" style={{ fontFamily: fonts.sans, fontSize: 13, lineHeight: 19, color: colors.brownMid }}>{loadError}</Text>
+              <Pressable accessibilityRole="button" onPress={load} style={{ minHeight: 40, justifyContent: 'center' }}><Text style={{ fontFamily: fonts.sansExtra, fontSize: 13, color: colors.terracotta }}>try again →</Text></Pressable>
+            </View>
+          ) : null}
+
+          {comments === null && !loadError ? (
             <ActivityIndicator color={colors.terracotta} style={{ marginVertical: 28 }} />
-          ) : comments.length === 0 ? (
+          ) : comments?.length === 0 && !loadError ? (
             <Text
               style={{
                 fontFamily: fonts.serif,
@@ -110,7 +142,7 @@ export function CommentsSheet({ open, postId, onClose, onCommentAdded }: Comment
             >
               no comments yet — say something nice
             </Text>
-          ) : (
+          ) : comments && comments.length > 0 ? (
             <ScrollView
               style={{ flexGrow: 0 }}
               contentContainerStyle={{ paddingHorizontal: 22, gap: 14, paddingBottom: 8 }}
@@ -148,7 +180,13 @@ export function CommentsSheet({ open, postId, onClose, onCommentAdded }: Comment
                 </View>
               ))}
             </ScrollView>
-          )}
+          ) : null}
+
+          {sendError || tooLong ? (
+            <Text accessibilityRole="alert" style={{ paddingHorizontal: 22, paddingTop: 10, fontFamily: fonts.sansSemi, fontSize: 12, lineHeight: 18, color: colors.terracotta }}>
+              {tooLong ? `Keep your comment to ${COMMENT_MAX_LENGTH.toLocaleString('en-US')} characters or fewer.` : sendError}
+            </Text>
+          ) : null}
 
           {/* composer */}
           <View
@@ -165,7 +203,9 @@ export function CommentsSheet({ open, postId, onClose, onCommentAdded }: Comment
           >
             <TextInput
               value={draft}
-              onChangeText={setDraft}
+              onChangeText={(value) => { setDraft(value); setSendError(null); }}
+              editable={!sending}
+              accessibilityLabel="Add a comment"
               placeholder="add a comment..."
               placeholderTextColor={colors.taupe}
               multiline
@@ -180,13 +220,16 @@ export function CommentsSheet({ open, postId, onClose, onCommentAdded }: Comment
             />
             <Pressable
               onPress={send}
-              disabled={!draft.trim() || sending}
+              disabled={!draft.trim() || sending || tooLong}
+              accessibilityRole="button"
+              accessibilityLabel="Send comment"
+              accessibilityState={{ disabled: !draft.trim() || sending || tooLong, busy: sending }}
               hitSlop={6}
               style={{
                 width: 38,
                 height: 38,
                 borderRadius: 19,
-                backgroundColor: draft.trim() ? colors.terracotta : colors.rule,
+                backgroundColor: draft.trim() && !tooLong ? colors.terracotta : colors.rule,
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
@@ -198,6 +241,9 @@ export function CommentsSheet({ open, postId, onClose, onCommentAdded }: Comment
               )}
             </Pressable>
           </View>
+          {draftLength >= COMMENT_MAX_LENGTH - 100 ? (
+            <Text style={{ paddingHorizontal: 22, paddingTop: 4, fontFamily: fonts.mono, fontSize: 11, color: tooLong ? colors.terracotta : colors.taupe }}>{draftLength.toLocaleString('en-US')} / {COMMENT_MAX_LENGTH.toLocaleString('en-US')}</Text>
+          ) : null}
         </View>
       </KeyboardAvoidingView>
     </Modal>

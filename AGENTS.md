@@ -55,6 +55,7 @@ Import alias: `@/*` → `src/*` (see `tsconfig.json`).
 
 - `npm install` — install deps (run after every branch switch/pull)
 - `npm run typecheck` — `tsc --noEmit`; **run before every commit**
+- `npm test` — focused Node regression tests. Local native and SQL QA setup is in `scripts/qa/README.md`; its HTTP fixtures are never production data.
 - `npx expo start` — dev server; connects to a **development build**, not Expo Go
 - `npx expo run:ios` — build + launch the dev client on the iOS Simulator (needs Xcode)
 - `eas build --profile development --platform ios` — cloud dev build for a physical device
@@ -109,6 +110,24 @@ unconfigured Supabase client.
   launched; MX/TXT email-routing records are independent.
 - Older builds fall back from the web handoff to `dolorian://invite/<token>`.
   Keep the legacy `/invite/[token]` app route while old TestFlight builds exist.
+
+## Sharing and invitations
+
+- Keep sharing centered on connections. Plans default to connections; invited-only
+  plans choose individual people. Circles are no longer exposed in the UI.
+- Legacy circle tables remain for old-client compatibility; do not drop their data
+  or reintroduce circle management without an explicit product decision.
+
+## IRL presence and account boundaries
+
+- Manual visits are explicit, last up to two hours, and work while automatic
+  sharing is Off. Keep the stop action available after a confirmed write even
+  when a follow-up refresh fails.
+- Automatic geofences, reminders and suggestions belong to the parent who set
+  them up. Never reuse another account's device registration. Legacy unowned
+  registrations require explicit setup again.
+- Reuse `data.getCurrentParentId()` / `useCurrentParentId`; do not add separate
+  identity caches. Pending presence work must reject stale account identities.
 
 ## Conventions
 

@@ -22,8 +22,7 @@ import { useCurrentParentId } from '@/hooks/useCurrentParentId';
  * own custom TabBar at the bottom without expo-router's default UI.
  *
  * Tab switches cross-fade: the wrapper (not the screens) animates
- * opacity on pathname change, so screens keep their state — no remount,
- * no refetch, just a soft entrance for the incoming tab.
+ * opacity on pathname change. Each screen owns its data-refresh lifecycle.
  */
 export default function TabsLayout() {
   const pathname = usePathname();
@@ -33,14 +32,38 @@ export default function TabsLayout() {
   const opacity = useSharedValue(1);
   const rise = useSharedValue(0);
 
-  // Pull the persisted "out & about" state once the user lands in tabs,
-  // so the header chips reflect the DB instead of a hardcoded default.
   useEffect(() => {
-    useVisibilityStore.getState().hydrate();
     registerConnectionPushToken().catch((cause) => {
       console.warn('push registration failed', cause);
     });
   }, []);
+
+  const irlIsVisible = pathname === '/irl';
+  useEffect(() => {
+    // IRL already refreshes the whole map and presence. Other tabs still need
+    // expiry/countdown transitions and background-arrival updates in the chip.
+    if (!myId || irlIsVisible) return;
+    let lastHydratedAt = 0;
+    let hydrationPending = false;
+    const refresh = () => {
+      if (AppState.currentState !== 'active') return;
+      useVisibilityStore.getState().tick();
+      if (hydrationPending) return;
+      hydrationPending = true;
+      lastHydratedAt = Date.now();
+      void useVisibilityStore.getState().hydrate().finally(() => { hydrationPending = false; });
+    };
+    refresh();
+    const timer = setInterval(() => {
+      if (AppState.currentState !== 'active') return;
+      useVisibilityStore.getState().tick();
+      if (Date.now() - lastHydratedAt >= 30_000) refresh();
+    }, 5_000);
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') refresh();
+    });
+    return () => { clearInterval(timer); subscription.remove(); };
+  }, [irlIsVisible, myId]);
 
   const refreshVillageBadge = useCallback(() => {
     data.getIncomingConnectionCount()

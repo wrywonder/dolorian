@@ -18,7 +18,6 @@ import { data } from '@/lib/data';
 import { readableError } from '@/lib/error-message';
 import type {
   BlockedParent,
-  ConnectionCircle,
   ConnectionInvite,
   ConnectionNotificationPreferences,
   ConnectionView,
@@ -26,14 +25,13 @@ import type {
   UUID,
 } from '@/types';
 
-type VillageTab = 'friends' | 'requests' | 'invites' | 'circles' | 'blocked';
+type VillageTab = 'friends' | 'requests' | 'invites' | 'blocked';
 type SortMode = 'favorites' | 'name' | 'recent';
 
 const TAB_OPTIONS: { key: VillageTab; label: string }[] = [
   { key: 'friends', label: 'Connections' },
   { key: 'requests', label: 'Requests' },
   { key: 'invites', label: 'Invites' },
-  { key: 'circles', label: 'Circles' },
   { key: 'blocked', label: 'Blocked' },
 ];
 
@@ -56,7 +54,6 @@ export function VillageScreen() {
   const [invites, setInvites] = useState<ConnectionInvite[]>([]);
   const [blocked, setBlocked] = useState<BlockedParent[]>([]);
   const [suggestions, setSuggestions] = useState<SuggestedConnection[]>([]);
-  const [circles, setCircles] = useState<ConnectionCircle[]>([]);
   const [outIds, setOutIds] = useState<Set<UUID>>(new Set());
   const [notifications, setNotifications] = useState(DEFAULT_NOTIFICATIONS);
   const [query, setQuery] = useState('');
@@ -66,18 +63,15 @@ export function VillageScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [circleName, setCircleName] = useState('');
-  const [circleEmoji, setCircleEmoji] = useState('✨');
 
   const load = useCallback(async (refresh = false) => {
     if (refresh) setRefreshing(true);
     try {
-      const [nextConnections, nextInvites, nextBlocked, nextSuggestions, nextCircles, nearby, nextNotifications] = await Promise.all([
+      const [nextConnections, nextInvites, nextBlocked, nextSuggestions, nearby, nextNotifications] = await Promise.all([
         data.getConnectionViews(),
         data.getConnectionInvites(),
         data.getBlockedParents(),
         data.getSuggestedConnections(),
-        data.getConnectionCircles(),
         data.getNearbyParents(),
         data.getConnectionNotificationPreferences(),
       ]);
@@ -85,7 +79,6 @@ export function VillageScreen() {
       setInvites(nextInvites);
       setBlocked(nextBlocked);
       setSuggestions(nextSuggestions);
-      setCircles(nextCircles);
       setOutIds(new Set(nearby.map((item) => item.parent.id)));
       setNotifications(nextNotifications);
       setError(null);
@@ -140,15 +133,6 @@ export function VillageScreen() {
       ...item.preference,
       favorite: !item.preference.favorite,
     }));
-
-  const createCircle = () => {
-    if (!circleName.trim()) return;
-    void run('create-circle', async () => {
-      await data.createConnectionCircle(circleName, circleEmoji || '✨');
-      setCircleName('');
-      setCircleEmoji('✨');
-    });
-  };
 
   const updateNotification = async (
     key: 'connection_requests' | 'connection_acceptances' | 'invite_redemptions' | 'plan_invitations',
@@ -362,34 +346,6 @@ export function VillageScreen() {
             </>
           ) : null}
 
-          {tab === 'circles' ? (
-            <>
-              <View style={styles.formCard}>
-                <Text style={styles.eyebrow}>NEW CIRCLE</Text>
-                <Text style={{ fontFamily: fonts.serifRegular, fontSize: 24, color: colors.dark }}>organize your people</Text>
-                <View style={{ flexDirection: 'row', gap: 9, paddingTop: 12 }}>
-                  <TextInput value={circleEmoji} onChangeText={setCircleEmoji} maxLength={4} style={[styles.field, { width: 54, textAlign: 'center', fontSize: 20 }]} />
-                  <TextInput value={circleName} onChangeText={setCircleName} placeholder="school, neighbors, playgroup…" placeholderTextColor={colors.taupe} style={[styles.field, { flex: 1 }]} />
-                  <Pressable disabled={!circleName.trim() || busyId === 'create-circle'} onPress={createCircle} style={[styles.addButton, !circleName.trim() && { opacity: 0.45 }]}>
-                    {busyId === 'create-circle' ? <ActivityIndicator color={colors.white} /> : <Icon name="plus" size={19} color={colors.white} />}
-                  </Pressable>
-                </View>
-              </View>
-              <Section title="your circles" eyebrow="SHARE WITH INTENTION">
-                {circles.length ? circles.map((circle) => (
-                  <Pressable key={circle.id} onPress={() => router.push(`/circle/${circle.id}` as never)} style={styles.circleRow}>
-                    <Text style={{ fontSize: 27 }}>{circle.emoji}</Text>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.rowName}>{circle.name}</Text>
-                      <Text style={styles.secondaryText}>{circle.memberIds.length} member{circle.memberIds.length === 1 ? '' : 's'}</Text>
-                    </View>
-                    <Icon name="chevron.right" size={18} color={colors.taupe} />
-                  </Pressable>
-                )) : <EmptyCopy text="Create circles for school families, neighbors, or close friends." />}
-              </Section>
-            </>
-          ) : null}
-
           {tab === 'blocked' ? (
             <Section title="blocked parents" eyebrow="PRIVATE TO YOU">
               {blocked.length ? blocked.map((person) => (
@@ -504,9 +460,5 @@ const styles = {
   smallButton: { minWidth: 58, minHeight: 32, paddingHorizontal: 10, borderRadius: radii.pill, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.cream, borderWidth: 1, borderColor: colors.rule } as const,
   heroAction: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, borderRadius: radii.lg, backgroundColor: colors.terracotta } as const,
   inviteRow: { minHeight: 67, flexDirection: 'row', alignItems: 'center', gap: 12, padding: 13, borderBottomWidth: 1, borderBottomColor: colors.rule } as const,
-  formCard: { padding: 16, borderRadius: radii.lg, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.rule } as const,
-  field: { height: 44, paddingHorizontal: 11, borderRadius: radii.md, backgroundColor: colors.cream, borderWidth: 1, borderColor: colors.rule, fontFamily: fonts.sansSemi, fontSize: 13, color: colors.dark } as const,
-  addButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.terracotta, alignItems: 'center', justifyContent: 'center' } as const,
-  circleRow: { minHeight: 67, flexDirection: 'row', alignItems: 'center', gap: 12, padding: 13, borderBottomWidth: 1, borderBottomColor: colors.rule } as const,
   toggleRow: { minHeight: 56, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: colors.rule } as const,
 };

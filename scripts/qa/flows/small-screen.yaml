@@ -1,0 +1,35 @@
+appId: com.dolorian.app
+---
+- evalScript: ${output.smallRsvp = json(http.get('http://127.0.0.1:54329/__qa/state').body).tables.activity_interactions.filter(r => r.activity_id === '99000000-0000-4000-8000-000000000301' && r.parent_id === '99000000-0000-4000-8000-000000000001')[0].rsvp_note}
+- openLink: dolorian://irl
+- assertVisible: "I’m here · come join.*"
+- takeScreenshot: small-irl
+- tapOn: "I’m here · come join.*"
+- assertVisible: "where’s the fun.*"
+- tapOn: "Search places.*"
+- inputText: Dolores
+- assertVisible: "Dolores Park"
+- tapOn: "Dolores Park"
+- assertVisible:
+    text: "share this visit.*"
+    enabled: true
+- takeScreenshot: small-irl-search-keyboard
+- tapOn: "Close check-in"
+- openLink: dolorian://plan/99000000-0000-4000-8000-000000000301
+- assertVisible: "plan details"
+- assertVisible: ".*all day.*"
+- takeScreenshot: small-plan-details
+- scrollUntilVisible:
+    element:
+      text: ${output.smallRsvp}
+    direction: DOWN
+    centerElement: true
+- tapOn: ${output.smallRsvp}
+- takeScreenshot: small-plan-rsvp-keyboard
+- swipe:
+    from:
+      text: "Add whichever specifics.*"
+    direction: UP
+    duration: 600
+- assertVisible: "save details"
+- takeScreenshot: small-plan-rsvp-save

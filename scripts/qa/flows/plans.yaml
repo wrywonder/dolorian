@@ -1,0 +1,194 @@
+appId: com.dolorian.app
+name: Plans - today, RSVP, individual invitations, and edit recovery
+# Prerequisites: logged in as parent@example.test, with the native dev client
+# pointed at scripts/qa/server.mjs on loopback. No production account or API.
+# Date-sensitive fixtures are generated when that server starts; restart it if
+# the test crosses midnight. New plan names are unique, so the flow can repeat.
+# All writes below happen through the real native UI. HTTP calls only inspect
+# the fictional server's persisted state; they never prepare a fake UI success.
+---
+- evalScript: ${output.planName = 'QA preschool picnic ' + Date.now()}
+- evalScript: ${output.editedPlanName = output.planName + ' updated'}
+- evalScript: ${output.rsvpNote = 'Avery Friday afternoon bringing fruit ' + Date.now()}
+
+# An all-day plan that started at midnight must remain in Upcoming today.
+- openLink: "dolorian://plans"
+- runFlow:
+    when:
+      visible: "^Open$"
+    commands:
+      - tapOn: "^Open$"
+- tapOn: "Upcoming"
+- tapOn: "List"
+- runFlow:
+    when:
+      visible: "clear filters.*"
+    commands:
+      - tapOn: "clear filters.*"
+- scrollUntilVisible:
+    element:
+      text: "Open Today: come picnic"
+    direction: UP
+- assertVisible: "Open Today: come picnic"
+- takeScreenshot: plans-today-all-day
+
+# Save a family RSVP note, then leave and reopen to verify it was persisted.
+- tapOn: "Open Today: come picnic"
+- assertVisible: "plan details"
+- assertVisible: ".*all day.*"
+- assertNotVisible: "12am"
+- scrollUntilVisible:
+    element:
+      text: ".*Going.*"
+    direction: DOWN
+    centerElement: true
+- tapOn: ".*Going.*"
+- scrollUntilVisible:
+    element:
+      text: "Your details · optional"
+    direction: DOWN
+    centerElement: true
+# iOS combines the input label and its current value in the accessibility text.
+- evalScript: ${output.existingRsvp = json(http.get('http://127.0.0.1:54329/__qa/state').body).tables.activity_interactions.filter(function(r) { return r.activity_id === '99000000-0000-4000-8000-000000000301' && r.parent_id === '99000000-0000-4000-8000-000000000001'; })[0]}
+- tapOn:
+    text: "Your details · optional.*"
+    index: 1
+# On repeated runs, erase the full previous note regardless of cursor position.
+# An empty note has no Select All menu, so only select when a value exists.
+- runFlow:
+    when:
+      true: ${Boolean(output.existingRsvp && output.existingRsvp.rsvp_note)}
+    commands:
+      - longPressOn:
+          text: "Your details · optional.*"
+          index: 1
+      - tapOn: "Select All"
+      - eraseText: 1
+- inputText: ${output.rsvpNote + '  \n'}
+- swipe:
+    from:
+      text: "Add whichever specifics.*"
+    direction: UP
+    duration: 500
+- scrollUntilVisible:
+    element:
+      text: "save details"
+    direction: DOWN
+- takeScreenshot: plans-rsvp-keyboard-save
+- tapOn:
+    text: "save details"
+    enabled: true
+- assertVisible:
+    text: "save details"
+    enabled: false
+- evalScript: ${output.rsvp = json(http.get('http://127.0.0.1:54329/__qa/state').body).tables.activity_interactions.filter(function(r) { return r.activity_id === '99000000-0000-4000-8000-000000000301' && r.parent_id === '99000000-0000-4000-8000-000000000001'; })[0]}
+- assertTrue:
+    condition: ${output.rsvp && output.rsvp.state === 'going' && output.rsvp.rsvp_note === output.rsvpNote}
+    label: RSVP state and family note were saved by the native UI
+- takeScreenshot: plans-rsvp-saved
+- tapOn: "Back"
+- assertVisible: "Upcoming"
+- scrollUntilVisible:
+    element:
+      text: "Open Today: come picnic"
+    direction: UP
+- tapOn: "Open Today: come picnic"
+- scrollUntilVisible:
+    element:
+      text: ${output.rsvpNote}
+    direction: DOWN
+    centerElement: true
+- assertVisible: ${output.rsvpNote}
+- takeScreenshot: plans-rsvp-reopened
+- tapOn: "Back"
+
+# Invite connected parents directly, with no saved groups to manage.
+- tapOn: "Add a plan"
+- assertVisible: "add a plan"
+- scrollUntilVisible:
+    element:
+      text: "Plan name.*"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Plan name.*"
+- inputText: ${output.planName}
+- pressKey: Enter
+- scrollUntilVisible:
+    element:
+      text: "Invited only.*"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Invited only.*"
+- assertNotVisible: "START WITH A CIRCLE"
+- assertNotVisible: "Preschool pals.*"
+- scrollUntilVisible:
+    element:
+      text: ".*Jamie Chen.*"
+    direction: DOWN
+    centerElement: true
+- tapOn: ".*Jamie Chen.*"
+- assertVisible: "CHOOSE CONNECTIONS · 1 SELECTED"
+- tapOn: ".*Sam Patel.*"
+- assertVisible: "CHOOSE CONNECTIONS · 2 SELECTED"
+- tapOn: ".*Jamie Chen.*"
+- assertVisible: "CHOOSE CONNECTIONS · 1 SELECTED"
+- tapOn: ".*Jamie Chen.*"
+- assertVisible: "CHOOSE CONNECTIONS · 2 SELECTED"
+- takeScreenshot: plans-individual-invitations
+- scrollUntilVisible:
+    element:
+      text: "publish plan.*"
+    direction: DOWN
+- tapOn:
+    text: "publish plan.*"
+    enabled: true
+- assertVisible: "plan details"
+- assertVisible: ${'.*' + output.planName + '.*'}
+- assertVisible: "INVITED ONLY"
+- evalScript: ${output.createdPlan = json(http.get('http://127.0.0.1:54329/__qa/state').body).tables.activities.filter(function(p) { return p.name === output.planName; })[0]}
+- assertTrue:
+    condition: ${output.createdPlan && output.createdPlan.visibility === 'invited'}
+    label: New plan was saved with invited-only visibility
+- evalScript: ${output.invitees = json(http.get('http://127.0.0.1:54329/__qa/state').body).tables.plan_invites.filter(function(i) { return i.plan_id === output.createdPlan.id; }).map(function(i) { return i.invited_parent_id; }).sort()}
+- assertTrue:
+    condition: ${JSON.stringify(output.invitees) === JSON.stringify(['99000000-0000-4000-8000-000000000002', '99000000-0000-4000-8000-000000000003'])}
+    label: Exactly the two selected fictional connections were invited
+- takeScreenshot: plans-invited-created
+
+# Editing dismisses back to the existing detail screen, which refreshes on
+# focus. One Back must then reach the list rather than an older detail screen.
+- tapOn: "edit"
+- assertVisible: "make a change"
+- scrollUntilVisible:
+    element:
+      text: "Plan name.*"
+    direction: DOWN
+    centerElement: true
+# A tap can put the iOS cursor in the middle of a long title. Select the whole
+# field before erasing so a timestamp suffix cannot survive the replacement.
+- tapOn: "Plan name.*"
+- longPressOn: "Plan name.*"
+- tapOn: "Select All"
+- eraseText: 1
+- inputText: ${output.editedPlanName}
+- pressKey: Enter
+- scrollUntilVisible:
+    element:
+      text: "save changes.*"
+    direction: DOWN
+- tapOn:
+    text: "save changes.*"
+    enabled: true
+- assertVisible: "plan details"
+- assertVisible: ${'.*' + output.editedPlanName + '.*'}
+- takeScreenshot: plans-edited-detail
+- tapOn: "Back"
+- assertVisible: "Upcoming"
+- scrollUntilVisible:
+    element:
+      text: ${'Open ' + output.editedPlanName}
+    direction: DOWN
+    speed: 20
+    centerElement: true
+- assertVisible: ${'Open ' + output.editedPlanName}
+- takeScreenshot: plans-edited-list

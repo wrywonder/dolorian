@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -15,16 +15,19 @@ import {
   subMonths,
 } from 'date-fns';
 import { ActivityCard } from '@/components/plans/ActivityCard';
-import { ActivityCardSkeleton, EmptyState, Icon, ScreenHeader } from '@/components/ui';
+import { ActivityCardSkeleton, EmptyState, Icon, ScreenHeader, TerracottaButton } from '@/components/ui';
 import { colors, fonts, radii } from '@/lib/constants';
 import { data } from '@/lib/data';
 import { readableError } from '@/lib/error-message';
-import { planDateKeys, planOccursOnDay } from '@/lib/plan-dates';
+import { planDateKeys, planIsRecent, planIsUpcoming, planOccursOnDay } from '@/lib/plan-dates';
+import { createLatestRequest } from '@/lib/latest-request';
+import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
 import type { ActivitySocialProof, PlanVisibility, UUID } from '@/types';
 
 type ViewMode = 'list' | 'calendar';
 type TimeRange = 'upcoming' | 'recent';
 type AudienceFilter = 'all' | PlanVisibility | 'mine';
+type ParticipationFilter = 'all' | 'joining';
 type SortMode = 'soonest' | 'popular' | 'newest';
 
 const AUDIENCE_FILTERS: { value: AudienceFilter; label: string }[] = [
@@ -52,45 +55,43 @@ export default function PlansScreen() {
   const [timeRange, setTimeRange] = useState<TimeRange>('upcoming');
   const [audience, setAudience] = useState<AudienceFilter>('all');
   const [sort, setSort] = useState<SortMode>('soonest');
+  const [participation, setParticipation] = useState<ParticipationFilter>('all');
+  const [requests] = useState(createLatestRequest);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState(() => startOfMonth(new Date()));
   const [selectedDay, setSelectedDay] = useState(() => new Date());
 
-  const load = useCallback(async (initial = false) => {
-    if (initial) setLoading(true);
+  const load = useCallback(async () => {
+    const isCurrent = requests.begin();
     setError(null);
     try {
       const [visiblePlans, me] = await Promise.all([data.getUpcomingActivities(), data.getCurrentUser()]);
+      if (!isCurrent()) return;
       setPlans(visiblePlans);
       setMyId(me.id);
     } catch (cause) {
-      setError(readableError(cause, 'Could not load your plans. Pull down to try again.'));
+      if (isCurrent()) setError(readableError(cause, 'Could not load your plans. Try again when you’re connected.'));
     } finally {
-      if (initial) setLoading(false);
+      if (isCurrent()) { setLoading(false); setRefreshing(false); }
     }
-  }, []);
+  }, [requests]);
 
-  useEffect(() => { load(true); }, [load]);
+  useRefreshOnFocus(load, requests.invalidate);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await load(false);
-    setRefreshing(false);
+    await load();
   }, [load]);
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
     const now = new Date();
-    const recentCutoff = new Date(now);
-    recentCutoff.setDate(recentCutoff.getDate() - 45);
 
     const matching = plans.filter((proof) => {
       const { activity, venue } = proof;
-      const start = activity.starts_at ? new Date(activity.starts_at) : null;
-      const end = activity.ends_at ? new Date(activity.ends_at) : start;
-      const isUpcoming = !end || end >= now;
-      if (timeRange === 'upcoming' && !isUpcoming) return false;
-      if (timeRange === 'recent' && (isUpcoming || !start || start < recentCutoff)) return false;
+      if (timeRange === 'upcoming' && !planIsUpcoming(activity, now)) return false;
+      if (timeRange === 'recent' && !planIsRecent(activity, now)) return false;
+      if (participation === 'joining' && !['going', 'interested', 'attended'].includes(proof.myState ?? '')) return false;
       if (audience === 'mine') {
         if (!myId || activity.created_by !== myId) return false;
       } else if (audience !== 'all' && activity.visibility !== audience) {
@@ -116,12 +117,15 @@ export default function PlansScreen() {
       const rightTime = right.activity.starts_at ? Date.parse(right.activity.starts_at) : Number.MAX_SAFE_INTEGER;
       return timeRange === 'recent' ? rightTime - leftTime : leftTime - rightTime;
     });
-  }, [audience, myId, plans, query, sort, timeRange]);
+  }, [audience, myId, participation, plans, query, sort, timeRange]);
 
   const selectedPlans = useMemo(
     () => filtered.filter((proof) => planOccursOnDay(proof.activity, selectedDay)),
     [filtered, selectedDay],
   );
+
+  const hasFilters = Boolean(query.trim() || audience !== 'all' || participation !== 'all' || sort !== 'soonest');
+  const resetFilters = () => { setQuery(''); setAudience('all'); setParticipation('all'); setSort('soonest'); };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.cream }} edges={['top']}>
@@ -142,9 +146,9 @@ export default function PlansScreen() {
           value={viewMode}
           onChange={(value) => setViewMode(value as ViewMode)}
         />
-        <Pressable onPress={() => setFiltersOpen((open) => !open)} style={[styles.filterButton, filtersOpen && styles.filterButtonActive]}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Find and sort plans" accessibilityState={{ expanded: filtersOpen }} onPress={() => setFiltersOpen((open) => !open)} style={[styles.filterButton, filtersOpen && styles.filterButtonActive]}>
           <Icon name={filtersOpen ? 'x' : 'search'} size={17} color={filtersOpen ? colors.white : colors.dark} />
-          <Text style={[styles.filterText, filtersOpen && { color: colors.white }]}>find & sort</Text>
+          <Text style={[styles.filterText, filtersOpen && { color: colors.white }]}>{hasFilters ? 'filters on' : 'find & sort'}</Text>
         </Pressable>
       </View>
 
@@ -152,6 +156,12 @@ export default function PlansScreen() {
         <TimeTab label="Upcoming" selected={timeRange === 'upcoming'} onPress={() => setTimeRange('upcoming')} />
         <TimeTab label="Recent" selected={timeRange === 'recent'} onPress={() => setTimeRange('recent')} />
       </View>
+
+      {hasFilters && !filtersOpen ? (
+        <Pressable accessibilityRole="button" onPress={resetFilters} style={styles.resetFilters}>
+          <Text style={styles.clearText}>clear filters · show all plans</Text>
+        </Pressable>
+      ) : null}
 
       {filtersOpen ? (
         <View style={styles.filters}>
@@ -166,6 +176,10 @@ export default function PlansScreen() {
               style={styles.searchInput}
             />
           </View>
+          <FilterGroup label="MY PLANS">
+            <FilterChip label="all plans" selected={participation === 'all'} onPress={() => setParticipation('all')} />
+            <FilterChip label="going & interested" selected={participation === 'joining'} onPress={() => setParticipation('joining')} />
+          </FilterGroup>
           <FilterGroup label="WHO CAN SEE IT">
             {AUDIENCE_FILTERS.map((filter) => (
               <FilterChip key={filter.value} label={filter.label} selected={audience === filter.value} onPress={() => setAudience(filter.value)} />
@@ -202,6 +216,7 @@ export default function PlansScreen() {
           }}
           onSelectDay={setSelectedDay}
           onOpen={(id) => router.push(`/plan/${id}` as never)}
+          onReload={load}
         />
       ) : (
         <ListView
@@ -210,8 +225,9 @@ export default function PlansScreen() {
           refreshing={refreshing}
           onRefresh={onRefresh}
           onOpen={(id) => router.push(`/plan/${id}` as never)}
-          onReload={() => load(false)}
-          hasFilters={Boolean(query.trim() || audience !== 'all')}
+          onReload={load}
+          hasFilters={hasFilters}
+          onResetFilters={resetFilters}
           timeRange={timeRange}
         />
       )}
@@ -219,7 +235,7 @@ export default function PlansScreen() {
   );
 }
 
-function ListView({ plans, error, refreshing, onRefresh, onOpen, onReload, hasFilters, timeRange }: {
+function ListView({ plans, error, refreshing, onRefresh, onOpen, onReload, hasFilters, onResetFilters, timeRange }: {
   plans: ActivitySocialProof[];
   error: string | null;
   refreshing: boolean;
@@ -227,6 +243,7 @@ function ListView({ plans, error, refreshing, onRefresh, onOpen, onReload, hasFi
   onOpen: (id: UUID) => void;
   onReload: () => void;
   hasFilters: boolean;
+  onResetFilters: () => void;
   timeRange: TimeRange;
 }) {
   return (
@@ -235,7 +252,7 @@ function ListView({ plans, error, refreshing, onRefresh, onOpen, onReload, hasFi
       showsVerticalScrollIndicator={false}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.terracotta} />}
     >
-      {error ? <Text selectable style={styles.error}>{error}</Text> : null}
+      {error ? <PlanLoadError error={error} onRetry={onReload} /> : null}
       {plans.length ? plans.map((proof, index) => (
         <ActivityCard
           key={proof.activity.id}
@@ -244,7 +261,8 @@ function ListView({ plans, error, refreshing, onRefresh, onOpen, onReload, hasFi
           onOpen={() => onOpen(proof.activity.id)}
           onStateChanged={onReload}
         />
-      )) : (
+      )) : !error ? (
+        <View>
         <EmptyState
           eyebrow={hasFilters ? 'NO MATCHES' : timeRange === 'recent' ? 'A QUIET FEW WEEKS' : 'NOTHING ON DECK'}
           title={hasFilters ? 'nothing fits that search' : timeRange === 'recent' ? 'no recent plans' : 'make the first plan'}
@@ -255,12 +273,18 @@ function ListView({ plans, error, refreshing, onRefresh, onOpen, onReload, hasFi
               : 'Add a camp, market day, playground meetup, or anything your family is considering.'}
           flourish="squiggle"
         />
-      )}
+        {hasFilters ? (
+          <TerracottaButton label="clear filters" onPress={onResetFilters} style={{ alignSelf: 'center' }} />
+        ) : timeRange === 'upcoming' ? (
+          <TerracottaButton label="add a plan →" onPress={() => router.push('/plan/new' as never)} style={{ alignSelf: 'center' }} />
+        ) : null}
+        </View>
+      ) : null}
     </ScrollView>
   );
 }
 
-function CalendarView({ month, selectedDay, plans, selectedPlans, error, refreshing, onRefresh, onPrevious, onNext, onSelectDay, onOpen }: {
+function CalendarView({ month, selectedDay, plans, selectedPlans, error, refreshing, onRefresh, onPrevious, onNext, onSelectDay, onOpen, onReload }: {
   month: Date;
   selectedDay: Date;
   plans: ActivitySocialProof[];
@@ -271,6 +295,7 @@ function CalendarView({ month, selectedDay, plans, selectedPlans, error, refresh
   onPrevious: () => void;
   onNext: () => void;
   onSelectDay: (day: Date) => void;
+  onReload: () => void;
   onOpen: (id: UUID) => void;
 }) {
   const days = eachDayOfInterval({
@@ -309,7 +334,7 @@ function CalendarView({ month, selectedDay, plans, selectedPlans, error, refresh
             const selected = isSameDay(day, selectedDay);
             const inMonth = isSameMonth(day, month);
             return (
-              <Pressable key={day.toISOString()} onPress={() => onSelectDay(day)} style={[styles.dayCell, selected && styles.daySelected]}>
+              <Pressable accessibilityRole="button" accessibilityLabel={`${format(day, 'EEEE, MMMM d')}, ${count} ${count === 1 ? 'plan' : 'plans'}`} accessibilityState={{ selected }} key={day.toISOString()} onPress={() => onSelectDay(day)} style={[styles.dayCell, selected && styles.daySelected]}>
                 <Text style={[styles.dayNumber, !inMonth && { opacity: 0.3 }, selected && { color: colors.white }]}>{format(day, 'd')}</Text>
                 <View style={styles.dots}>{Array.from({ length: Math.min(count, 3) }).map((_, index) => <View key={index} style={[styles.dot, selected && { backgroundColor: colors.white }]} />)}</View>
               </Pressable>
@@ -322,10 +347,10 @@ function CalendarView({ month, selectedDay, plans, selectedPlans, error, refresh
         <View><Text style={styles.eyebrow}>SELECTED DAY</Text><Text style={styles.dayTitle}>{format(selectedDay, 'EEEE, MMMM d')}</Text></View>
         <Text style={styles.dayCount}>{selectedPlans.length}</Text>
       </View>
-      {error ? <Text selectable style={styles.error}>{error}</Text> : null}
+      {error ? <PlanLoadError error={error} onRetry={onReload} /> : null}
       {selectedPlans.length ? selectedPlans.map((proof) => (
         <CompactPlan key={proof.activity.id} proof={proof} onPress={() => onOpen(proof.activity.id)} />
-      )) : <Text style={styles.noDayPlans}>No visible plans on this day.</Text>}
+      )) : !error ? <Text style={styles.noDayPlans}>No visible plans on this day.</Text> : null}
     </ScrollView>
   );
 }
@@ -339,11 +364,19 @@ function CompactPlan({ proof, onPress }: { proof: ActivitySocialProof; onPress: 
       </View>
       <View style={{ flex: 1, gap: 3 }}>
         <Text style={styles.compactTitle}>{activity.emoji ? `${activity.emoji} ` : ''}{activity.name}</Text>
+        {activity.cancelled_at ? <Text style={styles.cancelledLabel}>CANCELLED</Text> : null}
         <Text style={styles.compactMeta}>{activity.location_name ?? venue?.name ?? visibilityLabel(activity.visibility)} · {participantCount(proof)} responding</Text>
       </View>
       <Icon name="chevron.right" size={17} color={colors.taupe} />
     </Pressable>
   );
+}
+
+function PlanLoadError({ error, onRetry }: { error: string; onRetry: () => void }) {
+  return <View style={styles.loadError}>
+    <Text selectable accessibilityRole="alert" style={styles.error}>{error}</Text>
+    <Pressable accessibilityRole="button" onPress={onRetry} style={styles.retryButton}><Text style={styles.clearText}>try again →</Text></Pressable>
+  </View>;
 }
 
 function FilterGroup({ label, children }: { label: string; children: ReactNode }) {
@@ -357,7 +390,7 @@ function FilterGroup({ label, children }: { label: string; children: ReactNode }
 
 function FilterChip({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
   return (
-    <Pressable onPress={onPress} style={[styles.chip, selected && styles.chipSelected]}>
+    <Pressable accessibilityRole="button" accessibilityState={{ selected }} onPress={onPress} style={[styles.chip, selected && styles.chipSelected]}>
       <Text style={[styles.chipText, selected && { color: colors.white }]}>{label}</Text>
     </Pressable>
   );
@@ -375,7 +408,7 @@ function SegmentedControl({ options, value, onChange }: { options: { value: stri
   return (
     <View style={styles.segmented}>
       {options.map((option) => (
-        <Pressable key={option.value} onPress={() => onChange(option.value)} style={[styles.segment, option.value === value && styles.segmentSelected]}>
+        <Pressable accessibilityRole="tab" accessibilityState={{ selected: option.value === value }} key={option.value} onPress={() => onChange(option.value)} style={[styles.segment, option.value === value && styles.segmentSelected]}>
           {option.value === 'calendar' ? <Icon name="calendar" size={14} color={option.value === value ? colors.white : colors.taupe} /> : null}
           <Text style={[styles.segmentText, option.value === value && { color: colors.white }]}>{option.label}</Text>
         </Pressable>
@@ -395,6 +428,11 @@ function visibilityLabel(visibility: PlanVisibility): string {
 }
 
 const styles = {
+  resetFilters: { minHeight: 40, marginHorizontal: 14, justifyContent: 'center', alignItems: 'flex-end' } as const,
+  clearText: { fontFamily: fonts.sansBold, fontSize: 12, color: colors.terracotta } as const,
+  loadError: { marginBottom: 14, padding: 14, borderRadius: radii.md, borderWidth: 1, borderColor: colors.rule, backgroundColor: colors.surface } as const,
+  retryButton: { minHeight: 40, alignSelf: 'flex-start', justifyContent: 'center' } as const,
+  cancelledLabel: { fontFamily: fonts.monoBold, fontSize: 10, color: colors.terracotta } as const,
   addButton: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.terracotta, alignItems: 'center', justifyContent: 'center', shadowColor: '#924328', shadowOpacity: 0.35, shadowOffset: { width: 0, height: 2 }, shadowRadius: 0, elevation: 3 } as const,
   toolbar: { paddingHorizontal: 14, paddingTop: 8, flexDirection: 'row', gap: 9, alignItems: 'center' } as const,
   segmented: { flex: 1, flexDirection: 'row', padding: 3, borderRadius: 16, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.rule } as const,

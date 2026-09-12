@@ -24,7 +24,7 @@ export default function HangoutSpotsScreen() {
       await data.setHangoutSpot(spot.venue.id, !spot.is_mine);
       const next = await data.getHangoutSpots();
       setSpots(next);
-      await refreshHangoutMonitoring(next);
+      await refreshHangoutMonitoring();
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not update that hangout.'); }
   };
 
@@ -44,7 +44,7 @@ export default function HangoutSpotsScreen() {
         </Pressable>
       ))}
     </ScrollView>
-    <AddSpotSheet open={addOpen} onClose={() => setAddOpen(false)} onCreated={async () => { setAddOpen(false); await load(); const next = await data.getHangoutSpots(); await refreshHangoutMonitoring(next); }} />
+    <AddSpotSheet open={addOpen} onClose={() => setAddOpen(false)} onCreated={async () => { setAddOpen(false); await load(); await refreshHangoutMonitoring(); }} />
   </SafeAreaView>;
 }
 

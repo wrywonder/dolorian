@@ -1,0 +1,103 @@
+# Prerequisite: local QA server and development app signed in as parent@example.test.
+# Uses the documented element-based swipe, with no screen coordinates:
+# https://docs.maestro.dev/api-reference/commands/swipe
+# https://docs.maestro.dev/advanced/javascript/make-http-s-requests
+appId: com.dolorian.app
+onFlowStart:
+  - runScript:
+      file: feed-recovery-control.js
+      env:
+        MODE: prepare
+onFlowComplete:
+  - runScript:
+      file: feed-recovery-control.js
+      env:
+        MODE: clear
+---
+- openLink: dolorian://buzz
+- extendedWaitUntil:
+    visible: "buzz"
+    timeout: 20000
+- scrollUntilVisible:
+    element:
+      text: ${output.feedRecoveryTopText}
+    direction: UP
+    timeout: 60000
+# Reach the top before injecting the failure, including when a prior flow left
+# the feed scrolled. The gesture starts inside the card's scrollable list.
+- swipe:
+    from:
+      text: ${output.feedRecoveryTopText}
+    direction: DOWN
+    duration: 700
+- assertNotVisible: "We couldn.t refresh your village.*"
+- assertVisible: ${output.feedRecoveryTopText}
+- takeScreenshot: feed-recovery-loaded
+
+- runScript:
+    file: feed-recovery-control.js
+    env:
+      MODE: fail
+- swipe:
+    from:
+      text: ${output.feedRecoveryTopText}
+    direction: DOWN
+    duration: 700
+- extendedWaitUntil:
+    visible: "We couldn.t refresh your village.*"
+    timeout: 20000
+- assertVisible: "You can still browse the memories already loaded."
+- assertVisible:
+    text: "try again.*"
+    enabled: true
+- assertNotVisible: "make a little memory"
+- assertVisible: ${output.feedRecoveryTopText}
+- takeScreenshot: feed-recovery-failed-refresh
+
+# Retained cards remain readable and interactive while the request is failing.
+- scrollUntilVisible:
+    element:
+      text: "read the whole memory.*"
+    direction: DOWN
+    timeout: 60000
+    centerElement: true
+- assertVisible: "The kids invented a game.*"
+- tapOn: "read the whole memory.*"
+- scrollUntilVisible:
+    element:
+      text: "show less"
+    direction: DOWN
+    timeout: 60000
+    centerElement: true
+- assertVisible: ${output.feedRecoveryCaption}
+- takeScreenshot: feed-recovery-retained-memory
+- tapOn: "show less"
+- assertVisible: "read the whole memory.*"
+
+- scrollUntilVisible:
+    element:
+      text: "We couldn.t refresh your village.*"
+    direction: UP
+    timeout: 60000
+- runScript:
+    file: feed-recovery-control.js
+    env:
+      MODE: clear
+- tapOn:
+    text: "try again.*"
+    enabled: true
+- extendedWaitUntil:
+    notVisible: "We couldn.t refresh your village.*"
+    timeout: 20000
+- assertNotVisible: "You can still browse the memories already loaded."
+- assertNotVisible: "make a little memory"
+- assertVisible: ${output.feedRecoveryTopText}
+- scrollUntilVisible:
+    element:
+      text: "read the whole memory.*"
+    direction: DOWN
+    timeout: 60000
+    centerElement: true
+- assertVisible: "The kids invented a game.*"
+- assertVisible: "View plan: Last weekend at the park"
+- takeScreenshot: feed-recovery-retried

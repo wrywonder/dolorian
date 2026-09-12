@@ -2,7 +2,7 @@ import { Pressable, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { colors, fonts, type AvatarTone } from '@/lib/constants';
 import { FadeOverlay, PhotoTile, TimeStampPill } from '@/components/ui';
-import { dayShort, timeShort } from '@/lib/format';
+import { planDateLabel, planTimeLabel } from '@/lib/plan-dates';
 import { planStateLabel } from '@/lib/plan-rsvp-copy';
 import { presentInterestSheet } from './InterestSheet';
 import { SocialProofRow } from './SocialProofRow';
@@ -76,15 +76,14 @@ export function ActivityCard({ proof, rotation = 0, onStateChanged, onOpen }: Ac
               bottom: 0,
               left: 0,
               right: 0,
-              paddingTop: 70,
               paddingHorizontal: 16,
               paddingBottom: 14,
             }}
           >
             {activity.starts_at ? (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 5 }}>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginBottom: 5 }}>
                 <TimeStampPill
-                  label={dayShort(activity.starts_at)}
+                  label={planDateLabel(activity)}
                   variant="light"
                 />
                 <View
@@ -102,12 +101,13 @@ export function ActivityCard({ proof, rotation = 0, onStateChanged, onOpen }: Ac
                       color: colors.white,
                     }}
                   >
-                    {timeShort(activity.starts_at)}
+                    {planTimeLabel(activity)}
                   </Text>
                 </View>
               </View>
             ) : null}
             <Text
+              numberOfLines={2}
               style={{
                 fontFamily: fonts.serif,
                 fontSize: 26,
@@ -119,9 +119,10 @@ export function ActivityCard({ proof, rotation = 0, onStateChanged, onOpen }: Ac
               {activity.name}
             </Text>
             {(location || activity.description) ? (
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 4 }}>
+              <View style={{ gap: 2, marginTop: 4 }}>
                 {location ? (
                   <Text
+                    numberOfLines={1}
                     style={{
                       fontFamily: fonts.sansSemi,
                       fontSize: 12.5,
@@ -129,11 +130,11 @@ export function ActivityCard({ proof, rotation = 0, onStateChanged, onOpen }: Ac
                     }}
                   >
                     {location}
-                    {activity.description ? ' · ' : ''}
                   </Text>
                 ) : null}
                 {activity.description ? (
                   <Text
+                    numberOfLines={2}
                     style={{
                       fontFamily: fonts.serif,
                       fontSize: 13,

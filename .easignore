@@ -26,3 +26,7 @@ supabase/.temp/
 
 # Local launch-film source and rendered media are not part of the app bundle.
 marketing/
+
+# Local QA fixtures and screenshots must never enter a release archive.
+docs/
+scripts/qa/

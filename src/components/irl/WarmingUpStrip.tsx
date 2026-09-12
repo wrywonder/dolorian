@@ -38,9 +38,11 @@ export function WarmingUpStrip({ title = 'warming up', items, onPressVenue }: Wa
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={{ gap: 8, paddingRight: 16 }}
       >
-        {items.slice(0, 6).map((c, i) => (
+        {items.map((c, i) => (
           <Pressable
             key={c.venue.id}
+            accessibilityRole={onPressVenue ? 'button' : undefined}
+            accessibilityLabel={`${c.venue.name}, ${c.count} friends here${onPressVenue ? ', tap to check in' : ''}`}
             onPress={
               onPressVenue
                 ? () => {
@@ -90,7 +92,7 @@ export function WarmingUpStrip({ title = 'warming up', items, onPressVenue }: Wa
               >
                 {c.count > 0
                   ? `${c.count} ${c.count === 1 ? 'family' : 'families'}`
-                  : 'quiet'}
+                  : onPressVenue ? 'tap to check in' : 'quiet'}
               </Text>
             </View>
           </Pressable>

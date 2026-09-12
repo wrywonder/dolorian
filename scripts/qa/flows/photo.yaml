@@ -1,0 +1,91 @@
+# Required: -e QA_PHOTO_SELECTOR='Photo, ...' for a seeded native-picker asset.
+# See ../README.md. This uses only the fictional local QA server.
+appId: com.dolorian.app
+---
+- assertTrue: ${typeof QA_PHOTO_SELECTOR === 'string' && QA_PHOTO_SELECTOR.length > 0}
+- evalScript: ${output.photoStart = json(http.get('http://127.0.0.1:54329/__qa/state').body)}
+- evalScript: ${output.hiddenText = 'Only a thought ' + Date.now()}
+- openLink: dolorian://buzz
+- assertVisible: "buzz"
+- openLink: dolorian://compose
+- assertVisible: "new post"
+- tapOn: "Add photo"
+- extendedWaitUntil:
+    visible: ${QA_PHOTO_SELECTOR}
+    timeout: 15000
+- tapOn: ${QA_PHOTO_SELECTOR}
+- extendedWaitUntil:
+    visible: "Choose"
+    timeout: 10000
+- tapOn: "Choose"
+- assertVisible: "Change photo"
+- takeScreenshot: photo-selected-before-type-switch
+
+# Switching to a thought must save text only, without uploading hidden media.
+- tapOn: ".*thought"
+- assertNotVisible: "Change photo"
+- tapOn: "Memory or thought.*"
+- inputText: ${output.hiddenText}
+- swipe:
+    from:
+      text: ".*thought"
+    direction: UP
+    duration: 600
+- scrollUntilVisible:
+    element:
+      text: "share it.*"
+    direction: DOWN
+- tapOn: "share it.*"
+- assertVisible: "buzz"
+- evalScript: ${output.hiddenState = json(http.get('http://127.0.0.1:54329/__qa/state').body)}
+- evalScript: ${output.hiddenPosts = output.hiddenState.tables.posts.filter(function (p) { return p.body === output.hiddenText; })}
+- assertTrue: ${output.hiddenPosts.length === 1 && output.hiddenPosts[0].type === 'text' && output.hiddenPosts[0].media_path === null && output.hiddenPosts[0].activity_id === null && output.hiddenState.uploads.length === output.photoStart.uploads.length}
+- assertTrue: ${!output.photoStart.tables.posts.some(function (p) { return p.id === output.hiddenPosts[0].id; })}
+- scrollUntilVisible:
+    element:
+      text: ${'.*' + output.hiddenText + '.*'}
+    direction: UP
+- takeScreenshot: photo-hidden-thought-feed
+
+# A new photo post must upload real bytes and refer to that exact storage object.
+- evalScript: ${output.photoBefore = json(http.get('http://127.0.0.1:54329/__qa/state').body)}
+- evalScript: ${output.photoCaption = 'Local QA photo ' + Date.now()}
+- openLink: dolorian://buzz
+- assertVisible: "buzz"
+- openLink: dolorian://compose
+- assertVisible: "new post"
+- tapOn: "Add photo"
+- extendedWaitUntil:
+    visible: ${QA_PHOTO_SELECTOR}
+    timeout: 15000
+- tapOn: ${QA_PHOTO_SELECTOR}
+- extendedWaitUntil:
+    visible: "Choose"
+    timeout: 10000
+- tapOn: "Choose"
+- assertVisible: "Change photo"
+- tapOn: "Photo caption.*"
+- inputText: ${output.photoCaption}
+- swipe:
+    from:
+      text: "Change photo"
+    direction: UP
+    duration: 600
+- scrollUntilVisible:
+    element:
+      text: "share it.*"
+    direction: DOWN
+- tapOn: "share it.*"
+- assertVisible: "buzz"
+- evalScript: ${output.photoAfter = json(http.get('http://127.0.0.1:54329/__qa/state').body)}
+- evalScript: ${output.photoPosts = output.photoAfter.tables.posts.filter(function (p) { return p.body === output.photoCaption; })}
+- evalScript: ${output.newUploads = output.photoAfter.uploads.filter(function (upload) { return !output.photoBefore.uploads.some(function (old) { return old.key === upload.key; }); })}
+- assertTrue: ${output.photoPosts.length === 1 && output.photoPosts[0].type === 'photo' && output.photoPosts[0].body === output.photoCaption && output.photoPosts[0].activity_id === null && output.photoPosts[0].media_path && output.photoAfter.uploads.length === output.photoBefore.uploads.length + 1}
+- assertTrue: ${!output.photoBefore.tables.posts.some(function (p) { return p.id === output.photoPosts[0].id; }) && output.newUploads.length === 1 && output.newUploads[0].byteLength > 1000 && output.photoPosts[0].media_path.endsWith('/' + output.newUploads[0].key)}
+- scrollUntilVisible:
+    element:
+      text: ${'.*' + output.photoCaption + '.*'}
+    direction: UP
+- assertVisible: ${'.*' + output.photoCaption + '.*'}
+- assertVisible: ${'Photo shared by Alex Rivera, .*' + output.photoCaption + '.*'}
+- takeScreenshot: photo-uploaded-feed

@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Alert, Pressable, Text, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { colors, fonts } from '@/lib/constants';
 import { data } from '@/lib/data';
+import { reactionCountAfter } from '@/lib/post-engagement';
 import { Icon } from '@/components/ui';
 import { DEFAULT_REACTION_EMOJI } from '@/types';
 import type { FeedItem } from '@/types';
@@ -21,30 +22,55 @@ type PostEngagementRowProps = {
  * rolls back if the write fails.
  */
 export function PostEngagementRow({ item }: PostEngagementRowProps) {
+  // FlashList recycles rows: keep open sheets, drafts and in-flight writes
+  // attached to their post rather than to a reused cell.
+  return <PostEngagementControls key={item.post.id} item={item} />;
+}
+
+function PostEngagementControls({ item }: PostEngagementRowProps) {
   const emoji = item.post.reaction_emoji ?? DEFAULT_REACTION_EMOJI;
 
   const [reacted, setReacted] = useState(item.myReacted);
   const [count, setCount] = useState(item.reactionCount);
   const [commentCount, setCommentCount] = useState(item.commentCount);
   const [commentsOpen, setCommentsOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const pending = useRef(false);
+  const mounted = useRef(true);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
 
   // Resync when the feed refreshes (FlashList reuses card instances).
   useEffect(() => {
-    setReacted(item.myReacted);
-    setCount(item.reactionCount);
+    if (!pending.current) {
+      setReacted(item.myReacted);
+      setCount(item.reactionCount);
+    }
     setCommentCount(item.commentCount);
   }, [item.myReacted, item.reactionCount, item.commentCount]);
 
   const toggle = async () => {
+    if (pending.current) return;
+    pending.current = true;
+    setSaving(true);
     Haptics.selectionAsync().catch(() => {});
     const next = !reacted;
     setReacted(next);
-    setCount((c) => Math.max(0, c + (next ? 1 : -1)));
+    setCount(reactionCountAfter(count, reacted, next));
     try {
-      await data.toggleReaction(item.post.id, emoji);
+      await data.setPostReaction(item.post.id, emoji, next);
     } catch {
-      setReacted(!next);
-      setCount((c) => Math.max(0, c + (next ? -1 : 1)));
+      if (mounted.current) {
+        setReacted(reacted);
+        setCount(count);
+        Alert.alert('reaction didn’t save', 'Please try again when you’re connected.');
+      }
+    } finally {
+      pending.current = false;
+      if (mounted.current) setSaving(false);
     }
   };
 
@@ -52,6 +78,10 @@ export function PostEngagementRow({ item }: PostEngagementRowProps) {
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
       <Pressable
         onPress={toggle}
+        disabled={saving}
+        accessibilityRole="button"
+        accessibilityLabel={`${reacted ? 'Remove' : 'Add'} ${emoji} reaction, ${count} reactions`}
+        accessibilityState={{ selected: reacted, busy: saving, disabled: saving }}
         hitSlop={6}
         style={{
           flexDirection: 'row',
@@ -63,6 +93,7 @@ export function PostEngagementRow({ item }: PostEngagementRowProps) {
           backgroundColor: reacted ? 'rgba(201, 100, 66, 0.13)' : colors.surface,
           borderWidth: 1,
           borderColor: reacted ? colors.terracotta : colors.rule,
+          minHeight: 40,
         }}
       >
         <Text style={{ fontSize: 14 }}>{emoji}</Text>
@@ -81,6 +112,8 @@ export function PostEngagementRow({ item }: PostEngagementRowProps) {
 
       <Pressable
         onPress={() => setCommentsOpen(true)}
+        accessibilityRole="button"
+        accessibilityLabel={`Open comments, ${commentCount} comments`}
         hitSlop={6}
         style={{
           flexDirection: 'row',
@@ -92,6 +125,7 @@ export function PostEngagementRow({ item }: PostEngagementRowProps) {
           backgroundColor: colors.surface,
           borderWidth: 1,
           borderColor: colors.rule,
+          minHeight: 40,
         }}
       >
         <Icon name="bubble" size={15} color={colors.taupe} weight={2} />

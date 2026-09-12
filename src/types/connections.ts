@@ -35,16 +35,6 @@ export type ConnectionInvite = {
   created_at: Timestamp;
 };
 
-export type ConnectionCircle = {
-  id: UUID;
-  owner_id: UUID;
-  name: string;
-  emoji: string;
-  created_at: Timestamp;
-  updated_at: Timestamp;
-  memberIds: UUID[];
-};
-
 export type ParentPreview = {
   id: UUID;
   display_name: string;

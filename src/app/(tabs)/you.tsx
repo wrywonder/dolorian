@@ -1,57 +1,71 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fonts, radii } from '@/lib/constants';
 import { data } from '@/lib/data';
-import { AvatarCircle, FadeOverlay, Icon, Skeleton } from '@/components/ui';
+import { AvatarCircle, EmptyState, FadeOverlay, Icon, Skeleton } from '@/components/ui';
 import { KidsGrid } from '@/components/profile/KidsGrid';
 import { ProfileCover } from '@/components/profile/profile-cover';
-import { useCurrentParentId } from '@/hooks/useCurrentParentId';
 import type { ConnectionView, HangoutSpot, ProfileView } from '@/types';
 import type { IconName } from '@/components/ui';
 
 export default function YouScreen() {
-  const myId = useCurrentParentId();
   const [profile, setProfile] = useState<ProfileView | null>(null);
   const [connections, setConnections] = useState<ConnectionView[]>([]);
   const [spots, setSpots] = useState<HangoutSpot[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const requestVersion = useRef(0);
 
   const load = useCallback(async () => {
-    if (!myId) return;
+    const version = ++requestVersion.current;
+    setLoading(true);
+    setError(null);
     try {
+      // Resolve identity inside the retryable operation so a failed identity
+      // lookup cannot leave this screen waiting on a permanent skeleton.
+      const currentParent = await data.getCurrentUser();
       const [nextProfile, nextConnections, nextSpots] = await Promise.all([
-        data.getProfile(myId),
+        data.getProfile(currentParent.id),
         data.getConnectionViews(),
         data.getHangoutSpots(),
       ]);
+      if (version !== requestVersion.current) return;
+      if (!nextProfile) throw new Error('Your profile could not load. Please try again.');
       setProfile(nextProfile);
       setConnections(nextConnections);
       setSpots(nextSpots.filter((spot) => spot.is_mine));
       setError(null);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not load your profile.');
+      if (version === requestVersion.current) setError('We couldn’t load your profile. Check your connection and try again.');
+      console.warn('profile load failed', cause);
+    } finally {
+      if (version === requestVersion.current) setLoading(false);
     }
-  }, [myId]);
+  }, []);
 
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  useFocusEffect(useCallback(() => {
+    load();
+    return () => { requestVersion.current += 1; };
+  }, [load]));
 
-  if (!myId || !profile) {
+  if (!profile) {
     return (
-      <View style={{ flex: 1, backgroundColor: colors.cream }}>
-        <Skeleton width="100%" height={300} radius={0} />
-      </View>
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.cream }} edges={['top']}>
+        {loading ? <Skeleton width="100%" height={300} radius={0} /> : (
+          <ScrollView contentContainerStyle={{ paddingBottom: 140 }}>
+            <EmptyState title="your profile is taking a moment" body={error ?? 'Please try loading your profile again.'} flourish="squiggle" />
+            <Pressable accessibilityRole="button" onPress={load} style={{ alignSelf: 'center', minHeight: 44, justifyContent: 'center' }}><Text style={{ fontFamily: fonts.sansExtra, fontSize: 14, color: colors.terracotta }}>try again →</Text></Pressable>
+          </ScrollView>
+        )}
+      </SafeAreaView>
     );
   }
 
   const connected = connections.filter((item) => item.connection.status === 'connected');
   const incoming = connections.filter((item) => item.incoming);
   const parent = profile.parent;
-
-  const showError = (cause: unknown) => {
-    setError(cause instanceof Error ? cause.message : 'That did not work. Please try again.');
-  };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.cream }} edges={['top']}>
@@ -110,7 +124,7 @@ export default function YouScreen() {
             <QuickAction icon="map.pin" label="Hangout spots" onPress={() => router.push('../hangout-spots')} />
           </View>
 
-          {error ? <Text selectable style={{ fontFamily: fonts.sansSemi, fontSize: 12, color: colors.terracotta }}>{error}</Text> : null}
+          {error ? <View><Text accessibilityRole="alert" style={{ fontFamily: fonts.sansSemi, fontSize: 12, color: colors.terracotta }}>{error}</Text><Pressable accessibilityRole="button" onPress={load} style={{ minHeight: 44, justifyContent: 'center' }}><Text style={{ fontFamily: fonts.sansExtra, fontSize: 12, color: colors.terracotta }}>try again →</Text></Pressable></View> : null}
 
           {incoming.length > 0 ? (
             <Pressable onPress={() => router.push('/village?tab=requests' as never)} style={{ flexDirection: 'row', alignItems: 'center', gap: 11, padding: 14, borderRadius: radii.lg, backgroundColor: colors.terracotta }}>

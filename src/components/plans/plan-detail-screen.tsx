@@ -1,9 +1,12 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
   Alert,
   Linking,
+  Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   Text,
   TextInput,
@@ -16,7 +19,10 @@ import { format } from 'date-fns';
 import { AvatarCircle, Icon, PhotoTile, TerracottaButton } from '@/components/ui';
 import { colors, fonts, radii, type AvatarTone } from '@/lib/constants';
 import { data } from '@/lib/data';
+import { createLatestRequest } from '@/lib/latest-request';
+import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
 import { readableError } from '@/lib/error-message';
+import { planIsUpcoming } from '@/lib/plan-dates';
 import { planRsvpCopy } from '@/lib/plan-rsvp-copy';
 import type { ActivitySocialProof, InteractionState, PlanParticipant, UUID } from '@/types';
 
@@ -27,38 +33,66 @@ export function PlanDetailScreen({ id }: PlanDetailScreenProps) {
   const [proof, setProof] = useState<ActivitySocialProof | null>(null);
   const [myId, setMyId] = useState<UUID | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [requests] = useState(createLatestRequest);
+  const savedNote = useRef('');
+  const loadedId = useRef<UUID | null>(null);
+  const mutationPending = useRef(false);
   const [saving, setSaving] = useState(false);
   const [rsvpNote, setRsvpNote] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    const isCurrent = requests.begin();
     setError(null);
     try {
       const [nextProof, me] = await Promise.all([data.getPlan(id), data.getCurrentUser()]);
+      if (!isCurrent()) return;
       setProof(nextProof);
       setMyId(me.id);
-      setRsvpNote(nextProof?.myRsvpNote ?? '');
+      const nextNote = nextProof?.myRsvpNote?.trim() ?? '';
+      const samePlan = loadedId.current === id;
+      const previousNote = savedNote.current;
+      setRsvpNote((draft) => samePlan && draft.trim() !== previousNote ? draft : nextNote);
+      savedNote.current = nextNote;
+      loadedId.current = id;
       if (!nextProof) setError('This plan is unavailable or was shared with a different audience.');
     } catch (cause) {
-      setError(readableError(cause, 'Could not load this plan.'));
+      if (isCurrent()) setError(readableError(cause, 'Could not load this plan. Try again when you’re connected.'));
     } finally {
-      setLoading(false);
+      if (isCurrent()) { setLoading(false); setRefreshing(false); }
     }
-  }, [id]);
+  }, [id, requests]);
 
-  useEffect(() => { load(); }, [load]);
+  const refresh = useCallback(() => {
+    if (!mutationPending.current) void load();
+  }, [load]);
+  useRefreshOnFocus(refresh, requests.invalidate);
+
+  const onRefresh = () => {
+    if (mutationPending.current) return;
+    setRefreshing(true);
+    void load();
+  };
 
   const setRsvp = async (next: RsvpState | null, note = rsvpNote) => {
-    if (!proof || saving || proof.activity.cancelled_at) return;
+    if (!proof || mutationPending.current || proof.activity.cancelled_at) return;
+    mutationPending.current = true;
+    requests.invalidate();
     setSaving(true);
     setError(null);
     try {
       if (next) await data.setPlanRsvp(id, next, note);
       else await data.clearPlanRsvp(id);
+      const persistedNote = next ? note.trim() : '';
+      savedNote.current = persistedNote;
+      setRsvpNote(persistedNote);
+      setProof((current) => current ? { ...current, myState: next, myRsvpNote: persistedNote || null } : current);
       await load();
     } catch (cause) {
       setError(readableError(cause, 'Could not update your response.'));
     } finally {
+      mutationPending.current = false;
       setSaving(false);
     }
   };
@@ -73,13 +107,18 @@ export function PlanDetailScreen({ id }: PlanDetailScreenProps) {
           text: 'Cancel plan',
           style: 'destructive',
           onPress: async () => {
+            if (mutationPending.current) return;
+            mutationPending.current = true;
+            requests.invalidate();
             setSaving(true);
             try {
               await data.cancelPlan(id);
+              setProof((current) => current ? { ...current, activity: { ...current.activity, cancelled_at: new Date().toISOString() } } : current);
               await load();
             } catch (cause) {
               setError(readableError(cause, 'Could not cancel this plan.'));
             } finally {
+              mutationPending.current = false;
               setSaving(false);
             }
           },
@@ -95,8 +134,9 @@ export function PlanDetailScreen({ id }: PlanDetailScreenProps) {
   if (!proof) {
     return (
       <SafeAreaView style={styles.center}>
-        <Text style={styles.emptyTitle}>plan not found</Text>
+        <Text style={styles.emptyTitle}>plan unavailable</Text>
         <Text selectable style={styles.help}>{error}</Text>
+        <TerracottaButton label="try again" onPress={() => { setLoading(true); void load(); }} />
         <TerracottaButton label="go back" onPress={() => router.back()} />
       </SafeAreaView>
     );
@@ -107,7 +147,7 @@ export function PlanDetailScreen({ id }: PlanDetailScreenProps) {
   const imageUrl = activity.cover_image_url ?? venue?.image_url ?? null;
   const isOwner = activity.created_by === myId;
   const state = myState === 'going' || myState === 'interested' || myState === 'out' ? myState : null;
-  const noteChanged = rsvpNote.trim() !== (proof.myRsvpNote ?? '');
+  const noteChanged = rsvpNote.trim() !== (proof.myRsvpNote?.trim() ?? '');
   const rsvpCopy = planRsvpCopy(Boolean(activity.external_url));
 
   return (
@@ -124,80 +164,102 @@ export function PlanDetailScreen({ id }: PlanDetailScreenProps) {
         ) : <View style={{ width: 48 }} />}
       </View>
 
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.hero}>
-          {imageUrl ? (
-            <Image source={{ uri: imageUrl }} contentFit="cover" transition={180} style={{ width: '100%', height: 250 }} />
-          ) : (
-            <PhotoTile tone={toneForActivity(activity.emoji)} height={250} label={activity.name.toUpperCase()} />
-          )}
-          <View style={styles.heroBadges}>
-            <Badge label={visibilityLabel(activity.visibility)} />
-            {activity.cancelled_at ? <Badge label="CANCELLED" alert /> : null}
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <ScrollView
+          style={{ flex: 1 }}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.terracotta} />}
+        >
+          {error ? <View style={styles.retryNotice}><Text selectable accessibilityRole="alert" style={styles.error}>{error}</Text><Pressable accessibilityRole="button" disabled={saving} onPress={onRefresh} style={styles.retryButton}><Text style={styles.clearText}>try again →</Text></Pressable></View> : null}
+          <View style={styles.hero}>
+            {imageUrl ? (
+              <Image source={{ uri: imageUrl }} contentFit="cover" transition={180} style={{ width: '100%', height: 250 }} />
+            ) : (
+              <PhotoTile tone={toneForActivity(activity.emoji)} height={120} />
+            )}
+            <View style={styles.heroBadges}>
+              <Badge label={visibilityLabel(activity.visibility)} />
+              {activity.cancelled_at ? <Badge label="CANCELLED" alert /> : null}
+            </View>
           </View>
-        </View>
 
-        <View style={styles.titleBlock}>
-          {activity.emoji ? <Text style={styles.emoji}>{activity.emoji}</Text> : null}
-          <Text selectable style={styles.title}>{activity.name}</Text>
-          <Text style={styles.date}>{formatPlanDate(activity.starts_at, activity.ends_at, activity.all_day)}</Text>
-          {location ? <InfoLine icon="map.pin" text={location} /> : null}
-          {activity.location_address ? <Text selectable style={styles.address}>{activity.location_address}</Text> : null}
-          {activity.description ? <Text selectable style={styles.description}>{activity.description}</Text> : null}
-          {activity.external_url ? (
-            <Pressable onPress={() => Linking.openURL(activity.external_url!)} style={styles.linkButton}>
-              <Icon name="arrow.right" size={16} color={colors.terracotta} />
-              <Text style={styles.linkText}>open original listing</Text>
+          <View style={styles.titleBlock}>
+            {activity.emoji ? <Text style={styles.emoji}>{activity.emoji}</Text> : null}
+            <Text selectable style={styles.title}>{activity.name}</Text>
+            <Text style={styles.date}>{formatPlanDate(activity.starts_at, activity.ends_at, activity.all_day)}</Text>
+            {location ? <InfoLine icon="map.pin" text={location} /> : null}
+            {activity.location_address ? <Text selectable style={styles.address}>{activity.location_address}</Text> : null}
+            {activity.description ? <Text selectable style={styles.description}>{activity.description}</Text> : null}
+            {activity.external_url ? (
+              <Pressable accessibilityRole="link" onPress={() => {
+                Linking.openURL(activity.external_url!).catch(() => setError('Could not open that listing. Please try again.'));
+              }} style={styles.linkButton}>
+                <Icon name="arrow.right" size={16} color={colors.terracotta} />
+                <Text style={styles.linkText}>open original listing</Text>
+              </Pressable>
+            ) : null}
+          </View>
+
+          <View style={styles.section}>
+            <Text style={styles.eyebrow}>YOUR RSVP</Text>
+            <Text style={styles.sectionTitle}>{activity.cancelled_at ? 'this plan was cancelled' : rsvpCopy.prompt}</Text>
+            {!activity.cancelled_at ? (
+              <>
+                <View style={styles.rsvpRow}>
+                  <RsvpButton label={rsvpCopy.going} emoji="✓" selected={state === 'going'} disabled={saving} onPress={() => setRsvp('going')} />
+                  <RsvpButton label={rsvpCopy.interested} emoji="♡" selected={state === 'interested'} disabled={saving} onPress={() => setRsvp('interested')} />
+                  <RsvpButton label={rsvpCopy.out} emoji="×" selected={state === 'out'} disabled={saving} onPress={() => setRsvp('out')} />
+                </View>
+                {state ? (
+                  <View style={styles.rsvpDetails}>
+                    <Text style={styles.rowLabel}>{rsvpCopy.detailsLabel}</Text>
+                    <Text style={styles.helpLeft}>{rsvpCopy.detailsHelp}</Text>
+                    <TextInput
+                      editable={!saving}
+                      accessibilityLabel={rsvpCopy.detailsLabel}
+                      value={rsvpNote}
+                      onChangeText={setRsvpNote}
+                      maxLength={500}
+                      multiline
+                      placeholder={rsvpCopy.detailsPlaceholder}
+                      placeholderTextColor={colors.taupe}
+                      style={styles.rsvpNote}
+                    />
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <Pressable accessibilityRole="button" accessibilityState={{ disabled: saving, busy: saving }} disabled={saving} onPress={() => setRsvp(null)}><Text style={styles.clearText}>clear my response</Text></Pressable>
+                      <Pressable accessibilityRole="button" accessibilityState={{ disabled: saving || !noteChanged, busy: saving }} disabled={saving || !noteChanged} onPress={() => setRsvp(state)} style={[styles.saveNoteButton, !noteChanged && { opacity: 0.42 }]}>
+                        <Text style={styles.saveNoteText}>{saving ? 'saving…' : 'save details'}</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                ) : null}
+              </>
+            ) : null}
+          </View>
+
+          {!activity.cancelled_at && activity.starts_at && !planIsUpcoming(activity, new Date()) ? (
+            <View style={styles.section}>
+              <Text style={styles.eyebrow}>THE GOOD BITS</Text>
+              <Text style={styles.sectionTitle}>a little memory for the village</Text>
+              <Text style={styles.helpLeft}>Share a photo from this plan with your connections.</Text>
+              <TerracottaButton label="share a memory →" onPress={() => router.push({ pathname: '/compose', params: { activityId: activity.id } })} fullWidth />
+            </View>
+          ) : null}
+
+          <ParticipantSection title={rsvpCopy.going} people={goingConnections} empty={activity.external_url ? 'No other families have marked themselves signed up yet.' : 'No one else has said they’re going yet.'} />
+          <ParticipantSection title={rsvpCopy.interested} people={interestedConnections} empty="No one else is watching this one yet." />
+          {outConnections.length ? <ParticipantSection title={rsvpCopy.out} people={outConnections} empty="" subdued /> : null}
+
+          {isOwner && !activity.cancelled_at ? (
+            <Pressable disabled={saving} onPress={confirmCancel} style={styles.cancelButton}>
+              <Text style={styles.cancelText}>cancel this plan</Text>
             </Pressable>
           ) : null}
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.eyebrow}>YOUR RSVP</Text>
-          <Text style={styles.sectionTitle}>{activity.cancelled_at ? 'this plan was cancelled' : rsvpCopy.prompt}</Text>
-          {!activity.cancelled_at ? (
-            <>
-              <View style={styles.rsvpRow}>
-                <RsvpButton label={rsvpCopy.going} emoji="✓" selected={state === 'going'} disabled={saving} onPress={() => setRsvp('going')} />
-                <RsvpButton label={rsvpCopy.interested} emoji="♡" selected={state === 'interested'} disabled={saving} onPress={() => setRsvp('interested')} />
-                <RsvpButton label={rsvpCopy.out} emoji="×" selected={state === 'out'} disabled={saving} onPress={() => setRsvp('out')} />
-              </View>
-              {state ? (
-                <View style={styles.rsvpDetails}>
-                  <Text style={styles.rowLabel}>{rsvpCopy.detailsLabel}</Text>
-                  <Text style={styles.helpLeft}>{rsvpCopy.detailsHelp}</Text>
-                  <TextInput
-                    value={rsvpNote}
-                    onChangeText={setRsvpNote}
-                    maxLength={500}
-                    multiline
-                    placeholder={rsvpCopy.detailsPlaceholder}
-                    placeholderTextColor={colors.taupe}
-                    style={styles.rsvpNote}
-                  />
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <Pressable disabled={saving} onPress={() => setRsvp(null)}><Text style={styles.clearText}>clear my response</Text></Pressable>
-                    <Pressable disabled={saving || !noteChanged} onPress={() => setRsvp(state)} style={[styles.saveNoteButton, !noteChanged && { opacity: 0.42 }]}>
-                      <Text style={styles.saveNoteText}>{saving ? 'saving…' : 'save details'}</Text>
-                    </Pressable>
-                  </View>
-                </View>
-              ) : null}
-            </>
-          ) : null}
-        </View>
-
-        <ParticipantSection title={rsvpCopy.going} people={goingConnections} empty={activity.external_url ? 'No other families have marked themselves signed up yet.' : 'No one else has said they’re going yet.'} />
-        <ParticipantSection title={rsvpCopy.interested} people={interestedConnections} empty="No one else is watching this one yet." />
-        {outConnections.length ? <ParticipantSection title={rsvpCopy.out} people={outConnections} empty="" subdued /> : null}
-
-        {error ? <Text selectable style={styles.error}>{error}</Text> : null}
-        {isOwner && !activity.cancelled_at ? (
-          <Pressable disabled={saving} onPress={confirmCancel} style={styles.cancelButton}>
-            <Text style={styles.cancelText}>cancel this plan</Text>
-          </Pressable>
-        ) : null}
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -228,7 +290,7 @@ function ParticipantSection({ title, people, empty, subdued = false }: { title: 
 
 function RsvpButton({ label, emoji, selected, disabled, onPress }: { label: string; emoji: string; selected: boolean; disabled: boolean; onPress: () => void }) {
   return (
-    <Pressable disabled={disabled} onPress={onPress} style={[styles.rsvpButton, selected && styles.rsvpSelected]}>
+    <Pressable accessibilityRole="button" accessibilityState={{ selected, disabled, busy: disabled }} disabled={disabled} onPress={onPress} style={[styles.rsvpButton, selected && styles.rsvpSelected]}>
       <Text style={[styles.rsvpEmoji, selected && { color: colors.white }]}>{emoji}</Text>
       <Text style={[styles.rsvpLabel, selected && { color: colors.white }]}>{label}</Text>
     </Pressable>
@@ -281,6 +343,8 @@ function toneForActivity(emoji: string | null): AvatarTone {
 }
 
 const styles = {
+  retryNotice: { marginHorizontal: 14, padding: 14, backgroundColor: colors.surface, borderRadius: radii.md, borderWidth: 1, borderColor: colors.rule } as const,
+  retryButton: { minHeight: 40, justifyContent: 'center' } as const,
   center: { flex: 1, backgroundColor: colors.cream, padding: 28, alignItems: 'center', justifyContent: 'center', gap: 16 } as const,
   header: { paddingHorizontal: 16, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' } as const,
   headerTitle: { fontFamily: fonts.serifRegular, fontSize: 23, color: colors.dark } as const,
