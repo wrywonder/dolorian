@@ -1,0 +1,149 @@
+appId: com.dolorian.app
+name: Soccer Saturdays and weekday summer camp
+onFlowComplete:
+  - evalScript: >-
+      ${http.post('http://127.0.0.1:54329/__qa/control', {headers: {'Content-Type': 'application/json'}, body: JSON.stringify({fail: []})})}
+---
+- runFlow: reload-local.yaml
+- evalScript: ${output.soccerAlreadyShared = json(http.get('http://127.0.0.1:54329/__qa/state').body).tables.activities.some(function(p) { return p.external_source_key === 'url:https://example.test/soccer-league/' && !p.cancelled_at; })}
+- openLink: 'dolorian://plan/new'
+- runFlow:
+    when:
+      visible: '^Open$'
+    commands:
+      - tapOn: '^Open$'
+- tapOn: 'Have a signup link?'
+- tapOn: 'Original listing link.*'
+- inputText: 'https://example.test/soccer-league'
+- tapOn: 'prefill plan details'
+- extendedWaitUntil:
+    visible: '.*Little boots soccer league.*'
+    timeout: 15000
+# A repeated QA run may have shared the same fictional listing already.
+- runFlow:
+    when:
+      true: ${output.soccerAlreadyShared}
+    commands:
+      - scrollUntilVisible:
+          element: 'this is a separate plan'
+          direction: DOWN
+          centerElement: true
+      - tapOn: 'this is a separate plan'
+- evalScript: ${output.soccerName = 'QA Saturday soccer ' + Date.now()}
+- scrollUntilVisible:
+    element: 'Plan name.*'
+    direction: UP
+    centerElement: true
+- tapOn: 'Plan name.*'
+- longPressOn: 'Plan name.*'
+- runFlow:
+    when:
+      notVisible: 'Select All'
+    commands:
+      - longPressOn: 'Plan name.*'
+- tapOn: 'Select All'
+- eraseText: 1
+- inputText: ${output.soccerName}
+- tapOn: 'Done typing'
+- scrollUntilVisible:
+    element: 'Repeats weekly'
+    direction: DOWN
+    centerElement: true
+- tapOn: 'Repeats weekly'
+- scrollUntilVisible:
+    element: 'Repeat on Saturday'
+    direction: DOWN
+    centerElement: true
+- assertVisible: 'Repeat on Saturday'
+- takeScreenshot: plans-soccer-saturdays
+- tapOn:
+    text: 'Share plan'
+    enabled: true
+- assertVisible: 'plan details'
+- evalScript: ${output.soccer = json(http.get('http://127.0.0.1:54329/__qa/state').body).tables.activities.filter(function(p) { return p.name === output.soccerName; })[0]}
+- assertTrue:
+    condition: ${output.soccer && output.soccer.plan_kind === 'signup' && output.soccer.schedule_kind === 'weekly' && JSON.stringify(output.soccer.schedule_days) === '[6]' && output.soccer.schedule_timezone && new Date(output.soccer.starts_at).getDay() === 6 && new Date(output.soccer.ends_at).getDay() === 6}
+    label: Soccer persists Saturdays within its season rather than every intervening day
+- scrollUntilVisible:
+    element: '.*Signed up.*'
+    direction: DOWN
+    centerElement: true
+- takeScreenshot: plans-soccer-signup-details
+
+- evalScript: ${output.campAlreadyShared = json(http.get('http://127.0.0.1:54329/__qa/state').body).tables.activities.some(function(p) { return p.external_source_key === 'url:https://example.test/summer-camp/' && !p.cancelled_at; })}
+- openLink: 'dolorian://plan/new'
+- tapOn: 'Have a signup link?'
+- tapOn: 'Original listing link.*'
+- inputText: 'https://example.test/summer-camp'
+- tapOn: 'prefill plan details'
+- extendedWaitUntil:
+    visible: '.*Maple makers summer camp.*'
+    timeout: 15000
+- runFlow:
+    when:
+      true: ${output.campAlreadyShared}
+    commands:
+      - scrollUntilVisible:
+          element: 'this is a separate plan'
+          direction: DOWN
+          centerElement: true
+      - tapOn: 'this is a separate plan'
+- evalScript: ${output.campName = 'QA weekday makers camp ' + Date.now()}
+- scrollUntilVisible:
+    element: 'Plan name.*'
+    direction: UP
+    centerElement: true
+- tapOn: 'Plan name.*'
+- longPressOn: 'Plan name.*'
+- runFlow:
+    when:
+      notVisible: 'Select All'
+    commands:
+      - longPressOn: 'Plan name.*'
+- tapOn: 'Select All'
+- eraseText: 1
+- inputText: ${output.campName}
+- tapOn: 'Done typing'
+- scrollUntilVisible:
+    element: 'Repeats weekly'
+    direction: DOWN
+    centerElement: true
+- tapOn: 'Repeats weekly'
+- scrollUntilVisible:
+    element: 'Weekdays'
+    direction: DOWN
+    centerElement: true
+- tapOn: 'Weekdays'
+- takeScreenshot: plans-camp-weekday-hours
+- tapOn:
+    text: 'Share plan'
+    enabled: true
+- assertVisible: 'plan details'
+- evalScript: ${output.camp = json(http.get('http://127.0.0.1:54329/__qa/state').body).tables.activities.filter(function(p) { return p.name === output.campName; })[0]}
+- assertTrue:
+    condition: ${output.camp && output.camp.plan_kind === 'signup' && output.camp.schedule_kind === 'weekly' && JSON.stringify(output.camp.schedule_days) === '[1,2,3,4,5]' && new Date(output.camp.starts_at).getHours() === 9 && new Date(output.camp.ends_at).getHours() === 15 && output.camp.location_name === 'Maple Community Center'}
+    label: Camp preserves weekday recurrence, daily 9–3 hours, and its imported place
+- scrollUntilVisible:
+    element: '.*Signed up.*'
+    direction: DOWN
+    centerElement: true
+- tapOn: '.*Signed up.*'
+- scrollUntilVisible:
+    element: 'Signup details · optional.*'
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    text: 'Signup details · optional.*'
+    index: 1
+- evalScript: ${output.campNote = 'Avery - Monday and Wednesday - pickup at 3'}
+- inputText: ${output.campNote}
+- tapOn: 'Done typing'
+- scrollUntilVisible:
+    element: 'save details'
+    direction: DOWN
+    centerElement: true
+- tapOn: 'save details'
+- evalScript: ${output.campState = json(http.get('http://127.0.0.1:54329/__qa/state').body).tables}
+- assertTrue: ${output.campState.activity_interactions.some(function(r) { return r.activity_id === output.camp.id && r.parent_id === '99000000-0000-4000-8000-000000000001' && r.state === 'going' && r.rsvp_note === output.campNote; })}
+- assertTrue: ${JSON.stringify(output.campState.activities.filter(function(p) { return p.id === output.camp.id; })[0].schedule_days) === '[1,2,3,4,5]'}
+- takeScreenshot: plans-camp-family-note

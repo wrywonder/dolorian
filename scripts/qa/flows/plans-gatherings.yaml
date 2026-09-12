@@ -1,0 +1,138 @@
+appId: com.dolorian.app
+name: Effortless house hangout and park birthday
+onFlowComplete:
+  - evalScript: >-
+      ${http.post('http://127.0.0.1:54329/__qa/control', {headers: {'Content-Type': 'application/json'}, body: JSON.stringify({fail: []})})}
+---
+- runFlow: reload-local.yaml
+# All writes happen in native screens against fictional loopback data.
+- evalScript: ${output.houseName = 'QA backyard supper ' + Date.now()}
+- openLink: 'dolorian://plan/new'
+- runFlow:
+    when:
+      visible: '^Open$'
+    commands:
+      - tapOn: '^Open$'
+- tapOn: 'Plan name.*'
+- inputText: ${output.houseName}
+- tapOn: 'Done typing'
+# Back must not silently discard an interrupted parent's work.
+- tapOn: 'Back'
+- assertVisible: 'Keep editing'
+- tapOn: 'Keep editing'
+- assertVisible: ${'.*' + output.houseName + '.*'}
+- scrollUntilVisible:
+    element: 'or enter the place myself'
+    direction: DOWN
+    centerElement: true
+- tapOn: 'or enter the place myself'
+- tapOn: 'Place name.*'
+- inputText: 'Our back garden'
+- tapOn: 'Done typing'
+- tapOn: 'Address or meetup note.*'
+- inputText: 'Fictional house - use the side gate'
+- tapOn: 'Done typing'
+- scrollUntilVisible:
+    element: 'Who can see this plan'
+    direction: DOWN
+    centerElement: true
+- tapOn: 'Who can see this plan'
+- tapOn: 'Choose friends.*'
+- scrollUntilVisible:
+    element: 'Jamie Chen.*'
+    direction: DOWN
+    centerElement: true
+- tapOn: 'Jamie Chen.*'
+- tapOn: 'Sam Patel.*'
+- takeScreenshot: plans-house-selected-friends
+# Reject the save before any mutation; retry must preserve all of the draft.
+- evalScript: >-
+    ${http.post('http://127.0.0.1:54329/__qa/control', {headers: {'Content-Type': 'application/json'}, body: JSON.stringify({fail: ['create_plan_v3:POST']})})}
+- tapOn:
+    text: 'Share plan'
+    enabled: true
+- assertVisible: 'The local test server.*'
+- evalScript: ${output.failedPlans = json(http.get('http://127.0.0.1:54329/__qa/state').body).tables.activities.filter(function(p) { return p.name === output.houseName; })}
+- assertTrue: ${output.failedPlans.length === 0}
+- evalScript: >-
+    ${http.post('http://127.0.0.1:54329/__qa/control', {headers: {'Content-Type': 'application/json'}, body: JSON.stringify({fail: []})})}
+- tapOn:
+    text: 'Share plan'
+    enabled: true
+- assertVisible: 'plan details'
+- evalScript: ${output.house = json(http.get('http://127.0.0.1:54329/__qa/state').body).tables.activities.filter(function(p) { return p.name === output.houseName; })[0]}
+- assertTrue:
+    condition: ${output.house && output.house.plan_kind === 'gathering' && output.house.starts_at === null && output.house.visibility === 'invited' && output.house.location_name === 'Our back garden' && output.house.location_address === 'Fictional house - use the side gate'}
+    label: Private house gathering preserves its place and has no invented date
+- evalScript: ${output.houseInvitees = json(http.get('http://127.0.0.1:54329/__qa/state').body).tables.plan_invites.filter(function(i) { return i.plan_id === output.house.id; }).map(function(i) { return i.invited_parent_id; }).sort()}
+- assertTrue: ${JSON.stringify(output.houseInvitees) === JSON.stringify(['99000000-0000-4000-8000-000000000002', '99000000-0000-4000-8000-000000000003'])}
+- takeScreenshot: plans-house-shared-date-to-decide
+# Edit an undated plan and save without silently inserting tomorrow's date.
+- tapOn: 'edit'
+- tapOn:
+    text: 'Save changes'
+    enabled: true
+- assertVisible: 'plan details'
+- evalScript: ${output.houseReopened = json(http.get('http://127.0.0.1:54329/__qa/state').body).tables.activities.filter(function(p) { return p.id === output.house.id; })[0]}
+- assertTrue: ${output.houseReopened.starts_at === null && output.houseReopened.ends_at === null}
+
+# A park birthday can include an invitation link while keeping Going wording.
+- evalScript: ${output.birthdayName = 'QA birthday in the park ' + Date.now()}
+- openLink: 'dolorian://plan/new'
+- tapOn: 'Plan name.*'
+- inputText: ${output.birthdayName}
+- tapOn: 'Done typing'
+- scrollUntilVisible:
+    element: 'Find a place'
+    direction: DOWN
+    centerElement: true
+- tapOn: 'Find a place'
+- inputText: 'Maple Test City'
+- extendedWaitUntil:
+    visible: 'Choose Maple Playground, Maple Street, Test City'
+    timeout: 15000
+# The first tap selects with the software keyboard still open.
+- tapOn: 'Choose Maple Playground, Maple Street, Test City'
+- assertVisible: 'Change place, Maple Playground'
+- scrollUntilVisible:
+    element: 'Address or meetup note.*'
+    direction: DOWN
+    centerElement: true
+- tapOn: 'Address or meetup note.*'
+- longPressOn: 'Address or meetup note.*'
+- tapOn: 'Select All'
+- eraseText: 1
+- inputText: '123 Maple Street, Test City - picnic tables by the swings'
+- tapOn: 'Done typing'
+- scrollUntilVisible:
+    element: 'Choose a day'
+    direction: UP
+    centerElement: true
+- tapOn: 'Choose a day'
+- scrollUntilVisible:
+    element: 'Add a few details'
+    direction: DOWN
+    centerElement: true
+- tapOn: 'Add a few details'
+- scrollUntilVisible:
+    element: 'Supporting link.*'
+    direction: DOWN
+    centerElement: true
+- tapOn: 'Supporting link.*'
+- inputText: 'https://example.test/birthday'
+- takeScreenshot: plans-birthday-keyboard-share
+- tapOn:
+    text: 'Share plan'
+    enabled: true
+- assertVisible: 'plan details'
+- assertNotVisible: 'Done typing'
+- evalScript: ${output.birthday = json(http.get('http://127.0.0.1:54329/__qa/state').body).tables.activities.filter(function(p) { return p.name === output.birthdayName; })[0]}
+- assertTrue:
+    condition: ${output.birthday && output.birthday.plan_kind === 'gathering' && output.birthday.external_url === 'https://example.test/birthday' && output.birthday.location_name === 'Maple Playground' && output.birthday.location_address.indexOf('by the swings') >= 0 && output.birthday.starts_at !== null}
+    label: A supporting birthday link does not change gathering intent or lose the meetup note
+- scrollUntilVisible:
+    element: '.*Going.*'
+    direction: DOWN
+    centerElement: true
+- assertNotVisible: 'Signed up'
+- takeScreenshot: plans-birthday-going-with-link

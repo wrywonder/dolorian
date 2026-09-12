@@ -1,0 +1,87 @@
+appId: com.dolorian.app
+name: Saved camp edits survive rereading the same listing
+---
+- runFlow: reload-local.yaml
+- evalScript: ${output.before = json(http.get('http://127.0.0.1:54329/__qa/state').body).tables.activities.filter(function(p) { return p.external_url === 'https://example.test/summer-camp' && p.schedule_kind === 'weekly'; }).slice(-1)[0]}
+- assertTrue: ${Boolean(output.before)}
+- evalScript: ${output.noteBefore = json(http.get('http://127.0.0.1:54329/__qa/state').body).tables.activity_interactions.filter(function(r) { return r.activity_id === output.before.id && r.parent_id === '99000000-0000-4000-8000-000000000001'; })[0].rsvp_note}
+- openLink: ${'dolorian://plan/' + output.before.id}
+- tapOn: 'edit'
+- scrollUntilVisible:
+    element: 'Address or meetup note.*'
+    direction: DOWN
+    centerElement: true
+- tapOn: 'Address or meetup note.*'
+- longPressOn: 'Address or meetup note.*'
+- runFlow:
+    when:
+      notVisible: 'Select All'
+    commands:
+      - longPressOn: 'Address or meetup note.*'
+- tapOn: 'Select All'
+- eraseText: 1
+- inputText: '123 Maple Street, Test City - use the side gate for camp'
+- tapOn: 'Done typing'
+- scrollUntilVisible:
+    element: 'Plan details.*'
+    direction: DOWN
+    centerElement: true
+- tapOn: 'Plan details.*'
+- longPressOn: 'Plan details.*'
+- runFlow:
+    when:
+      notVisible: 'Select All'
+    commands:
+      - longPressOn: 'Plan details.*'
+- tapOn: 'Select All'
+- eraseText: 1
+- inputText: 'Bring old clothes and a buddy. We can help with pickup.'
+- tapOn:
+    text: 'Save changes'
+    enabled: true
+- assertVisible: 'plan details'
+- assertNotVisible: 'Done typing'
+
+# A fresh editor instance has no prior-import cache. Its saved personal edits
+# and recurring schedule must survive importing that same source again.
+- tapOn: 'edit'
+- scrollUntilVisible:
+    element: 'Have a signup link?'
+    direction: UP
+    centerElement: false
+- tapOn: 'Have a signup link?'
+- scrollUntilVisible:
+    element: 'prefill plan details'
+    direction: DOWN
+    centerElement: true
+- tapOn: 'prefill plan details'
+- evalScript: ${output.sameSourceCount = json(http.get('http://127.0.0.1:54329/__qa/state').body).tables.activities.filter(function(p) { return p.external_source_key === output.before.external_source_key && !p.cancelled_at; }).length}
+- runFlow:
+    when:
+      true: ${output.sameSourceCount > 1}
+    commands:
+      - scrollUntilVisible:
+          element: 'this is a separate plan'
+          direction: DOWN
+          centerElement: true
+      - tapOn: 'this is a separate plan'
+- scrollUntilVisible:
+    element: 'Repeat on Wednesday'
+    direction: DOWN
+    centerElement: true
+- takeScreenshot: plans-saved-camp-reimport-weekdays
+- tapOn:
+    text: 'Save changes'
+    enabled: true
+- assertVisible: 'plan details'
+- evalScript: ${output.after = json(http.get('http://127.0.0.1:54329/__qa/state').body).tables.activities.filter(function(p) { return p.id === output.before.id; })[0]}
+- assertTrue:
+    condition: ${output.after.name === output.before.name && output.after.starts_at === output.before.starts_at && output.after.ends_at === output.before.ends_at && output.after.schedule_kind === 'weekly' && JSON.stringify(output.after.schedule_days) === JSON.stringify(output.before.schedule_days) && output.after.location_address === '123 Maple Street, Test City - use the side gate for camp' && output.after.description === 'Bring old clothes and a buddy. We can help with pickup.'}
+    label: Saved title, manual meetup instructions, details and exact weekly schedule all survive same-source import
+- evalScript: ${output.noteAfter = json(http.get('http://127.0.0.1:54329/__qa/state').body).tables.activity_interactions.filter(function(r) { return r.activity_id === output.before.id && r.parent_id === '99000000-0000-4000-8000-000000000001'; })[0].rsvp_note}
+- assertTrue: ${output.noteAfter === output.noteBefore}
+- scrollUntilVisible:
+    element: ${'.*' + output.after.name + '.*'}
+    direction: UP
+    centerElement: false
+- takeScreenshot: plans-camp-detail-final

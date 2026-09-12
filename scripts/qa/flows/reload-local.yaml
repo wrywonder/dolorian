@@ -1,0 +1,16 @@
+appId: com.dolorian.app
+name: Reload the local development bundle
+---
+- stopApp
+- openLink: 'dolorian://expo-development-client/?url=http%3A%2F%2F127.0.0.1%3A8082'
+- runFlow:
+    when:
+      visible: '^Open$'
+    commands:
+      - tapOn: '^Open$'
+- extendedWaitUntil:
+    visible: 'buzz'
+    timeout: 60000
+- extendedWaitUntil:
+    notVisible: 'Downloading.*'
+    timeout: 30000

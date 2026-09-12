@@ -28,7 +28,7 @@ appId: com.dolorian.app
 - takeScreenshot: small-plan-rsvp-keyboard
 - swipe:
     from:
-      text: "Add whichever specifics.*"
+      text: "Who’s coming.*"
     direction: UP
     duration: 600
 - assertVisible: "save details"

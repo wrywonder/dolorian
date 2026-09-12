@@ -47,6 +47,11 @@ onFlowComplete:
 - takeScreenshot: place-selected
 - tapOn: 'Address or meetup note.*'
 - longPressOn: 'Address or meetup note.*'
+- runFlow:
+    when:
+      notVisible: 'Select All'
+    commands:
+      - longPressOn: 'Address or meetup note.*'
 - tapOn: 'Select All'
 - eraseText: 1
 - inputText: '123 Maple Street, Test City - meet by the swings'
@@ -58,12 +63,12 @@ onFlowComplete:
     duration: 500
 - assertNotVisible: 'Done typing'
 - scrollUntilVisible:
-    element: 'publish plan.*'
+    element: 'Share plan'
     direction: DOWN
-    centerElement: true
+    centerElement: false
 - takeScreenshot: plan-publish-after-scroll
 - tapOn:
-    text: 'publish plan.*'
+    text: 'Share plan'
     enabled: true
 - assertVisible: 'plan details'
 - evalScript: ${output.plan = json(http.get('http://127.0.0.1:54329/__qa/state').body).tables.activities.filter(function(p) { return p.name === output.name; })[0]}
@@ -76,6 +81,21 @@ onFlowComplete:
     direction: DOWN
     centerElement: true
 - assertVisible: '.*123 Maple Street, Test City - meet by the swings.*'
+# A result is only a suggestion until its full address resolves successfully.
+- tapOn: 'Change place, Maple Playground'
+- inputText: 'Maple'
+- extendedWaitUntil:
+    visible: 'Choose Maple Playground, Maple Street, Test City'
+    timeout: 15000
+- evalScript: >-
+    ${http.post('http://127.0.0.1:54329/__qa/control', {headers: {'Content-Type': 'application/json'}, body: JSON.stringify({fail: ['place-search']})})}
+- tapOn: 'Choose Maple Playground, Maple Street, Test City'
+- assertVisible: 'Place search couldn’t connect.*'
+- takeScreenshot: place-details-failed-draft-retained
+- tapOn: 'cancel search'
+- assertNotVisible: 'Done typing'
+- assertVisible: 'Change place, Maple Playground'
+- assertVisible: '.*123 Maple Street, Test City - meet by the swings.*'
 # Search failure must preserve the saved place and support manual entry.
 - evalScript: >-
     ${http.post('http://127.0.0.1:54329/__qa/control', {headers: {'Content-Type': 'application/json'}, body: JSON.stringify({fail: ['place-search']})})}
@@ -87,6 +107,7 @@ onFlowComplete:
     element: 'cancel search'
     direction: DOWN
 - tapOn: 'cancel search'
+- assertNotVisible: 'Done typing'
 - assertVisible: 'Change place, Maple Playground'
 - tapOn: 'or enter the place myself'
 - scrollUntilVisible:
@@ -95,6 +116,11 @@ onFlowComplete:
     centerElement: true
 - tapOn: 'Place name.*'
 - longPressOn: 'Place name.*'
+- runFlow:
+    when:
+      notVisible: 'Select All'
+    commands:
+      - longPressOn: 'Place name.*'
 - tapOn: 'Select All'
 - eraseText: 1
 - inputText: 'Our back garden'
@@ -102,9 +128,9 @@ onFlowComplete:
 - evalScript: >-
     ${http.post('http://127.0.0.1:54329/__qa/control', {headers: {'Content-Type': 'application/json'}, body: JSON.stringify({fail: []})})}
 - scrollUntilVisible:
-    element: 'save changes.*'
+    element: 'Save changes'
     direction: DOWN
-- tapOn: 'save changes.*'
+- tapOn: 'Save changes'
 - assertVisible: 'plan details'
 - evalScript: ${output.edited = json(http.get('http://127.0.0.1:54329/__qa/state').body).tables.activities.filter(function(p) { return p.id === output.plan.id; })[0]}
 - assertTrue: ${output.edited.location_name === 'Our back garden'}

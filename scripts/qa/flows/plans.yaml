@@ -11,15 +11,19 @@ name: Plans - today, RSVP, individual invitations, and edit recovery
 - evalScript: ${output.editedPlanName = output.planName + ' updated'}
 - evalScript: ${output.rsvpNote = 'Avery Friday afternoon bringing fruit ' + Date.now()}
 
-# An all-day plan that started at midnight must remain in Upcoming today.
+# An all-day plan that started at midnight must remain on the current list today.
 - openLink: "dolorian://plans"
 - runFlow:
     when:
       visible: "^Open$"
     commands:
       - tapOn: "^Open$"
-- tapOn: "Upcoming"
-- tapOn: "List"
+- tapOn: "All plans"
+- runFlow:
+    when:
+      visible: "Show list"
+    commands:
+      - tapOn: "Show list"
 - runFlow:
     when:
       visible: "clear filters.*"
@@ -62,12 +66,19 @@ name: Plans - today, RSVP, individual invitations, and edit recovery
       - longPressOn:
           text: "Your details · optional.*"
           index: 1
+      - runFlow:
+          when:
+            notVisible: "Select All"
+          commands:
+            - longPressOn:
+                text: "Your details · optional.*"
+                index: 1
       - tapOn: "Select All"
       - eraseText: 1
 - inputText: ${output.rsvpNote + '  \n'}
 - swipe:
     from:
-      text: "Add whichever specifics.*"
+      text: "Who’s coming.*"
     direction: UP
     duration: 500
 - scrollUntilVisible:
@@ -87,7 +98,7 @@ name: Plans - today, RSVP, individual invitations, and edit recovery
     label: RSVP state and family note were saved by the native UI
 - takeScreenshot: plans-rsvp-saved
 - tapOn: "Back"
-- assertVisible: "Upcoming"
+- assertVisible: "All plans"
 - scrollUntilVisible:
     element:
       text: "Open Today: come picnic"
@@ -104,7 +115,7 @@ name: Plans - today, RSVP, individual invitations, and edit recovery
 
 # Invite connected parents directly, with no saved groups to manage.
 - tapOn: "Add a plan"
-- assertVisible: "add a plan"
+- assertVisible: "make a little plan"
 - scrollUntilVisible:
     element:
       text: "Plan name.*"
@@ -115,10 +126,11 @@ name: Plans - today, RSVP, individual invitations, and edit recovery
 - pressKey: Enter
 - scrollUntilVisible:
     element:
-      text: "Invited only.*"
+      text: "Who can see this plan"
     direction: DOWN
     centerElement: true
-- tapOn: "Invited only.*"
+- tapOn: "Who can see this plan"
+- tapOn: "Choose friends"
 - assertNotVisible: "START WITH A CIRCLE"
 - assertNotVisible: "Preschool pals.*"
 - scrollUntilVisible:
@@ -127,24 +139,27 @@ name: Plans - today, RSVP, individual invitations, and edit recovery
     direction: DOWN
     centerElement: true
 - tapOn: ".*Jamie Chen.*"
-- assertVisible: "CHOOSE CONNECTIONS · 1 SELECTED"
+# React Native exposes iOS checkbox state as an accessibility value, while
+# Maestro's checked flag remains false. Check the visible selected count here;
+# the exact two identities are independently verified in persisted invites below.
+- assertVisible: 'Date to decide · 1 friend selected'
 - tapOn: ".*Sam Patel.*"
-- assertVisible: "CHOOSE CONNECTIONS · 2 SELECTED"
+- assertVisible: 'Date to decide · 2 friends selected'
 - tapOn: ".*Jamie Chen.*"
-- assertVisible: "CHOOSE CONNECTIONS · 1 SELECTED"
+- assertVisible: 'Date to decide · 1 friend selected'
 - tapOn: ".*Jamie Chen.*"
-- assertVisible: "CHOOSE CONNECTIONS · 2 SELECTED"
+- assertVisible: 'Date to decide · 2 friends selected'
 - takeScreenshot: plans-individual-invitations
 - scrollUntilVisible:
     element:
-      text: "publish plan.*"
+      text: "Share plan"
     direction: DOWN
 - tapOn:
-    text: "publish plan.*"
+    text: "Share plan"
     enabled: true
 - assertVisible: "plan details"
 - assertVisible: ${'.*' + output.planName + '.*'}
-- assertVisible: "INVITED ONLY"
+- assertVisible: "CHOSEN FRIENDS"
 - evalScript: ${output.createdPlan = json(http.get('http://127.0.0.1:54329/__qa/state').body).tables.activities.filter(function(p) { return p.name === output.planName; })[0]}
 - assertTrue:
     condition: ${output.createdPlan && output.createdPlan.visibility === 'invited'}
@@ -158,7 +173,7 @@ name: Plans - today, RSVP, individual invitations, and edit recovery
 # Editing dismisses back to the existing detail screen, which refreshes on
 # focus. One Back must then reach the list rather than an older detail screen.
 - tapOn: "edit"
-- assertVisible: "make a change"
+- assertVisible: "edit plan"
 - scrollUntilVisible:
     element:
       text: "Plan name.*"
@@ -168,22 +183,34 @@ name: Plans - today, RSVP, individual invitations, and edit recovery
 # field before erasing so a timestamp suffix cannot survive the replacement.
 - tapOn: "Plan name.*"
 - longPressOn: "Plan name.*"
+- runFlow:
+    when:
+      notVisible: "Select All"
+    commands:
+      - longPressOn: "Plan name.*"
 - tapOn: "Select All"
 - eraseText: 1
 - inputText: ${output.editedPlanName}
 - pressKey: Enter
 - scrollUntilVisible:
     element:
-      text: "save changes.*"
+      text: "Save changes"
     direction: DOWN
 - tapOn:
-    text: "save changes.*"
+    text: "Save changes"
     enabled: true
 - assertVisible: "plan details"
 - assertVisible: ${'.*' + output.editedPlanName + '.*'}
 - takeScreenshot: plans-edited-detail
 - tapOn: "Back"
-- assertVisible: "Upcoming"
+- assertVisible: "All plans"
+# Find the edited row through the real list filter. This also keeps repeat runs
+# independent of the number of earlier fictional plans in the fixture server.
+- tapOn: "Find and sort plans"
+- tapOn: "Search plans.*"
+- inputText: ${output.editedPlanName}
+- tapOn: "Done typing"
+- tapOn: "Find and sort plans"
 - scrollUntilVisible:
     element:
       text: ${'Open ' + output.editedPlanName}

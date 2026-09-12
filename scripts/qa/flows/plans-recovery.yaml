@@ -1,0 +1,97 @@
+appId: com.dolorian.app
+name: RSVP persistence through failed refresh and retry
+onFlowComplete:
+  - evalScript: >-
+      ${http.post('http://127.0.0.1:54329/__qa/control', {headers: {'Content-Type': 'application/json'}, body: JSON.stringify({fail: []})})}
+---
+- runFlow: reload-local.yaml
+- openLink: 'dolorian://plan/99000000-0000-4000-8000-000000000301'
+- runFlow:
+    when:
+      visible: '^Open$'
+    commands:
+      - tapOn: '^Open$'
+- assertVisible: 'plan details'
+- scrollUntilVisible:
+    element: '.*Going.*'
+    direction: DOWN
+    centerElement: true
+- tapOn: '.*Going.*'
+- scrollUntilVisible:
+    element: 'Your details · optional.*'
+    direction: DOWN
+    centerElement: true
+- evalScript: ${output.beforeRsvp = json(http.get('http://127.0.0.1:54329/__qa/state').body).tables.activity_interactions.filter(function(r) { return r.activity_id === '99000000-0000-4000-8000-000000000301' && r.parent_id === '99000000-0000-4000-8000-000000000001'; })[0]}
+- tapOn:
+    text: 'Your details · optional.*'
+    index: 1
+- runFlow:
+    when:
+      true: ${Boolean(output.beforeRsvp && output.beforeRsvp.rsvp_note)}
+    commands:
+      - longPressOn:
+          text: 'Your details · optional.*'
+          index: 1
+      - tapOn: 'Select All'
+      - eraseText: 1
+- evalScript: ${output.recoveryNote = 'Avery plus one parent - bringing fruit ' + Date.now()}
+- inputText: ${output.recoveryNote}
+- tapOn: 'Done typing'
+- evalScript: ${output.writesBefore = json(http.get('http://127.0.0.1:54329/__qa/state').body).mutations.filter(function(m) { return m.name === 'set_plan_rsvp'; }).length}
+- evalScript: >-
+    ${http.post('http://127.0.0.1:54329/__qa/control', {headers: {'Content-Type': 'application/json'}, body: JSON.stringify({failAfterMutation: {trigger: 'set_plan_rsvp:POST', fail: ['activities:GET']}})})}
+- scrollUntilVisible:
+    element: 'save details'
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    text: 'save details'
+    enabled: true
+- assertVisible:
+    text: 'save details'
+    enabled: false
+- evalScript: ${output.savedRsvp = json(http.get('http://127.0.0.1:54329/__qa/state').body).tables.activity_interactions.filter(function(r) { return r.activity_id === '99000000-0000-4000-8000-000000000301' && r.parent_id === '99000000-0000-4000-8000-000000000001'; })[0]}
+- assertTrue: ${output.savedRsvp.state === 'going' && output.savedRsvp.rsvp_note === output.recoveryNote}
+- scrollUntilVisible:
+    element: 'Today: come picnic'
+    direction: UP
+    centerElement: true
+- swipe:
+    from:
+      text: 'Today: come picnic'
+    direction: DOWN
+    duration: 400
+- extendedWaitUntil:
+    visible: 'The local test server.*'
+    timeout: 20000
+- takeScreenshot: plans-rsvp-saved-refresh-failed
+- evalScript: >-
+    ${http.post('http://127.0.0.1:54329/__qa/control', {headers: {'Content-Type': 'application/json'}, body: JSON.stringify({fail: []})})}
+- tapOn: 'try again.*'
+- assertNotVisible: 'The local test server.*'
+- scrollUntilVisible:
+    element: ${'.*' + output.recoveryNote + '.*'}
+    direction: DOWN
+    centerElement: true
+- assertVisible: ${'.*' + output.recoveryNote + '.*'}
+- evalScript: ${output.writesAfter = json(http.get('http://127.0.0.1:54329/__qa/state').body).mutations.filter(function(m) { return m.name === 'set_plan_rsvp'; }).length}
+- assertTrue:
+    condition: ${output.writesAfter === output.writesBefore + 1}
+    label: Retry refreshed the confirmed response instead of submitting a duplicate RSVP
+- takeScreenshot: plans-rsvp-retry-preserved
+
+# Failure before a response change leaves the confirmed response untouched.
+- evalScript: >-
+    ${http.post('http://127.0.0.1:54329/__qa/control', {headers: {'Content-Type': 'application/json'}, body: JSON.stringify({fail: ['set_plan_rsvp:POST']})})}
+- scrollUntilVisible:
+    element: '.*Maybe.*'
+    direction: UP
+    centerElement: true
+- tapOn: '.*Maybe.*'
+- evalScript: ${output.rejectedRsvp = json(http.get('http://127.0.0.1:54329/__qa/state').body).tables.activity_interactions.filter(function(r) { return r.activity_id === '99000000-0000-4000-8000-000000000301' && r.parent_id === '99000000-0000-4000-8000-000000000001'; })[0]}
+- assertTrue: ${output.rejectedRsvp.state === 'going' && output.rejectedRsvp.rsvp_note === output.recoveryNote}
+- evalScript: >-
+    ${http.post('http://127.0.0.1:54329/__qa/control', {headers: {'Content-Type': 'application/json'}, body: JSON.stringify({fail: []})})}
+- tapOn: '.*Maybe.*'
+- evalScript: ${output.changedRsvp = json(http.get('http://127.0.0.1:54329/__qa/state').body).tables.activity_interactions.filter(function(r) { return r.activity_id === '99000000-0000-4000-8000-000000000301' && r.parent_id === '99000000-0000-4000-8000-000000000001'; })[0]}
+- assertTrue: ${output.changedRsvp.state === 'interested' && output.changedRsvp.rsvp_note === output.recoveryNote}

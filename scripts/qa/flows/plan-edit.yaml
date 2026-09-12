@@ -20,9 +20,13 @@ name: Plan edit - full title replacement and refreshed navigation
       visible: "^Open$"
     commands:
       - tapOn: "^Open$"
-- assertVisible: "Upcoming"
-- tapOn: "Upcoming"
-- tapOn: "List"
+- assertVisible: "All plans"
+- tapOn: "All plans"
+- runFlow:
+    when:
+      visible: "Show list"
+    commands:
+      - tapOn: "Show list"
 - runFlow:
     when:
       visible: "clear filters.*"
@@ -41,7 +45,7 @@ name: Plan edit - full title replacement and refreshed navigation
 - assertVisible: "plan details"
 - assertVisible: ${'.*' + output.originalPlanName + '.*'}
 - tapOn: "edit"
-- assertVisible: "make a change"
+- assertVisible: "edit plan"
 - scrollUntilVisible:
     element:
       text: "Plan name.*"
@@ -55,10 +59,10 @@ name: Plan edit - full title replacement and refreshed navigation
 - pressKey: Enter
 - scrollUntilVisible:
     element:
-      text: "save changes.*"
+      text: "Save changes"
     direction: DOWN
 - tapOn:
-    text: "save changes.*"
+    text: "Save changes"
     enabled: true
 - assertVisible: "plan details"
 - assertVisible: ${'.*' + output.editedPlanName + '.*'}
@@ -68,7 +72,7 @@ name: Plan edit - full title replacement and refreshed navigation
     label: The same plan persisted the complete replacement title exactly
 - takeScreenshot: plan-edit-refreshed-detail
 - tapOn: "Back"
-- assertVisible: "Upcoming"
+- assertVisible: "All plans"
 - assertNotVisible: "plan details"
 - scrollUntilVisible:
     element:

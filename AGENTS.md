@@ -137,10 +137,35 @@ unconfigured Supabase client.
   automatic keyboard inset around them.
 - Modal sheets put `accessibilityViewIsModal` on `KeyboardFrame`, so their Done
   control stays inside the accessibility boundary.
+- Full-screen native form modals need their own `SafeAreaProvider` around
+  `SafeAreaView`; the presenting route's insets may put controls under the status bar.
 - Plans place search uses the authenticated `place-search` Edge Function and the
   existing server-only `GOOGLE_MAPS_API_KEY`. Keep manual place entry available,
   preserve the draft when search fails/cancels, and never expose that key in Expo
   public environment variables.
+- Place results have their own modal keyboard frame. Keep the form's Share action
+  unavailable while search is open so a clipped result cannot publish a draft.
+
+## Plans coordination
+
+- New plans store `plan_kind` (`gathering` or `signup`). Supporting links do not
+  imply registration; only legacy rows with no kind use the old URL fallback.
+- Dates may be undecided. A null start must not keep an old end or recurrence.
+  Keep undated plans after dated plans in the list and off the calendar.
+- Weekly schedules use selected weekdays, an IANA time zone, and bounded first
+  and last sessions (at most 366 days apart). `ends_at` is the final session's end;
+  all-day final dates are inclusive. Repeated timed sessions end the same day.
+  Use `plan-schedule.ts` / `plan-dates.ts` for dates, labels and next occurrences;
+  never infer daily attendance across a soccer season or add 24-hour UTC steps.
+- Preserve the stored time zone when editing. New plans use the device time zone.
+  Importing a link does not infer a weekly schedule from multiple program choices.
+- `create_plan_v3` / `update_plan_v3` persist intent, schedules and invitations
+  atomically. Deploy their migration before distributing this client. Legacy RPCs
+  and null schedule metadata remain for older clients.
+- Shared-by identity is independent of RSVP and comes from `plan_shared_by`, which
+  checks plan visibility and blocks. Responses count parents, not households.
+- One response covers the whole plan. Notes can describe a child, team, week or
+  exceptions; Village does not register anyone with an external organizer.
 
 ## Conventions
 

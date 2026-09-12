@@ -1,0 +1,84 @@
+appId: com.dolorian.app
+name: Decide a date later without retaining a hidden schedule
+---
+- runFlow: reload-local.yaml
+- openLink: 'dolorian://plan/new'
+- assertVisible: 'make a little plan'
+- assertVisible:
+    text: 'Share plan'
+    enabled: false
+- assertNotVisible: 'Done typing'
+- takeScreenshot: plans-new-editor-default
+- evalScript: ${output.datePlanName = 'QA decide the day together ' + Date.now()}
+- tapOn: 'Plan name.*'
+- inputText: ${output.datePlanName}
+- tapOn: 'Done typing'
+- scrollUntilVisible:
+    element: 'Choose a day'
+    direction: DOWN
+    centerElement: true
+- tapOn: 'Choose a day'
+# Change the installed native compact picker, rather than accepting its default.
+- evalScript: >-
+    ${output.pickerDate = new Date(); output.pickerDate.setDate(output.pickerDate.getDate() + 1); output.pickerDate.setDate(output.pickerDate.getDate() === 20 ? 21 : 20); output.pickerDate.setHours(17, 0, 0, 0); output.expectedStart = output.pickerDate.toISOString(); output.pickerLabel = '(Today, )?' + ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][output.pickerDate.getDay()] + ', ' + ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][output.pickerDate.getMonth()] + ' ' + output.pickerDate.getDate()}
+- scrollUntilVisible:
+    element:
+      id: 'plan-start-date'
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    id: 'plan-start-date'
+- tapOn: ${output.pickerLabel}
+# UIKit exposes the dismissal backdrop across the full screen, so its center
+# is inside the calendar. Tap the inspected empty header area outside the popover.
+- tapOn:
+    point: '90%, 15%'
+- assertNotVisible: 'dismiss popup'
+- scrollUntilVisible:
+    element: 'Add an end time'
+    direction: DOWN
+    centerElement: true
+- tapOn: 'Add an end time'
+- scrollUntilVisible:
+    element: 'Add a few details'
+    direction: DOWN
+    centerElement: true
+- tapOn: 'Add a few details'
+- scrollUntilVisible:
+    element: 'Plan details.*'
+    direction: DOWN
+    centerElement: true
+- tapOn: 'Plan details.*'
+- inputText: 'Snacks at ours - timing is flexible'
+- takeScreenshot: plans-details-keyboard-share
+# Save while typing; the destination must not inherit a stale Done toolbar.
+- tapOn:
+    text: 'Share plan'
+    enabled: true
+- assertVisible: 'plan details'
+- assertNotVisible: 'Done typing'
+- evalScript: ${output.dated = json(http.get('http://127.0.0.1:54329/__qa/state').body).tables.activities.filter(function(p) { return p.name === output.datePlanName; })[0]}
+- assertTrue:
+    condition: ${output.dated.starts_at === output.expectedStart && new Date(output.dated.ends_at).getTime() - new Date(output.dated.starts_at).getTime() === 7200000}
+    label: A real native picker change persisted its exact day and the chosen two-hour duration
+- tapOn: 'edit'
+- scrollUntilVisible:
+    element: 'Date to decide'
+    direction: UP
+    centerElement: true
+- tapOn: 'Date to decide'
+- assertVisible: 'Choose a day'
+- assertNotVisible:
+    id: 'plan-start-date'
+- assertNotVisible:
+    id: 'plan-end-time'
+- tapOn:
+    text: 'Save changes'
+    enabled: true
+- assertVisible: 'plan details'
+- assertVisible: 'Date to be decided'
+- evalScript: ${output.undated = json(http.get('http://127.0.0.1:54329/__qa/state').body).tables.activities.filter(function(p) { return p.id === output.dated.id; })[0]}
+- assertTrue:
+    condition: ${output.undated.starts_at === null && output.undated.ends_at === null && output.undated.schedule_kind === 'once' && JSON.stringify(output.undated.schedule_days) === '[]' && output.undated.description === 'Snacks at ours - timing is flexible'}
+    label: Explicit date clearing removes hidden bounds while keeping the actual plan details
+- takeScreenshot: plans-date-cleared-after-edit

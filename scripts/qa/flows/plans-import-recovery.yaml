@@ -1,0 +1,109 @@
+appId: com.dolorian.app
+name: Duplicate coordination and honest partial import
+onFlowComplete:
+  - evalScript: >-
+      ${http.post('http://127.0.0.1:54329/__qa/control', {headers: {'Content-Type': 'application/json'}, body: JSON.stringify({fail: []})})}
+---
+- runFlow: reload-local.yaml
+# An existing shared listing opens the same plan without making a duplicate.
+- evalScript: ${output.artCountBefore = json(http.get('http://127.0.0.1:54329/__qa/state').body).tables.activities.filter(function(p) { return p.external_source_key === 'url:https://example.test/art-club/'; }).length}
+- openLink: 'dolorian://plan/new'
+- runFlow:
+    when:
+      visible: '^Open$'
+    commands:
+      - tapOn: '^Open$'
+- tapOn: 'Have a signup link?'
+- tapOn: 'Original listing link.*'
+- inputText: 'https://example.test/art-club'
+- tapOn: 'prefill plan details'
+- extendedWaitUntil:
+    visible: 'open existing plan.*'
+    timeout: 15000
+- scrollUntilVisible:
+    element: 'open existing plan.*'
+    direction: DOWN
+    centerElement: true
+- takeScreenshot: plans-import-existing-coordination
+- tapOn: 'open existing plan.*'
+- assertVisible: 'plan details'
+- assertVisible: '.*Art club with friends.*'
+- evalScript: ${output.artCountAfter = json(http.get('http://127.0.0.1:54329/__qa/state').body).tables.activities.filter(function(p) { return p.external_source_key === 'url:https://example.test/art-club/'; }).length}
+- assertTrue: ${output.artCountAfter === output.artCountBefore}
+
+# Switching from a complete camp listing to a partial listing must not retain
+# the first camp's dates, hours, place, image or description.
+- evalScript: ${output.partialAlreadyShared = json(http.get('http://127.0.0.1:54329/__qa/state').body).tables.activities.some(function(p) { return p.external_source_key === 'url:https://example.test/partial-camp/' && !p.cancelled_at; })}
+- openLink: 'dolorian://plan/new'
+- tapOn: 'Have a signup link?'
+- tapOn: 'Original listing link.*'
+- inputText: 'https://example.test/summer-camp'
+- tapOn: 'prefill plan details'
+- extendedWaitUntil:
+    visible: '.*Maple makers summer camp.*'
+    timeout: 15000
+- scrollUntilVisible:
+    element: 'Original listing link.*'
+    direction: UP
+    centerElement: true
+- tapOn: 'Original listing link.*'
+- longPressOn: 'Original listing link.*'
+- runFlow:
+    when:
+      notVisible: 'Select All'
+    commands:
+      - longPressOn: 'Original listing link.*'
+- tapOn: 'Select All'
+- eraseText: 1
+- inputText: 'https://example.test/partial-camp'
+- tapOn: 'prefill plan details'
+- extendedWaitUntil:
+    visible: '.*A little art camp.*'
+    timeout: 15000
+- assertVisible: 'The listing did not include reliable dates.*'
+- runFlow:
+    when:
+      true: ${output.partialAlreadyShared}
+    commands:
+      - scrollUntilVisible:
+          element: 'this is a separate plan'
+          direction: DOWN
+          centerElement: true
+      - tapOn: 'this is a separate plan'
+- takeScreenshot: plans-partial-import-undecided
+- evalScript: ${output.partialName = 'QA partial camp ' + Date.now()}
+- scrollUntilVisible:
+    element: 'Plan name.*'
+    direction: UP
+    centerElement: true
+- tapOn: 'Plan name.*'
+- longPressOn: 'Plan name.*'
+- runFlow:
+    when:
+      notVisible: 'Select All'
+    commands:
+      - longPressOn: 'Plan name.*'
+- tapOn: 'Select All'
+- eraseText: 1
+- inputText: ${output.partialName}
+- tapOn: 'Done typing'
+# A failed reread preserves the editable fields instead of producing success.
+- scrollUntilVisible:
+    element: 'prefill plan details'
+    direction: UP
+    centerElement: true
+- evalScript: >-
+    ${http.post('http://127.0.0.1:54329/__qa/control', {headers: {'Content-Type': 'application/json'}, body: JSON.stringify({fail: ['plan-link-preview']})})}
+- tapOn: 'prefill plan details'
+- assertVisible: 'Could not read that page. Check the link and try again, or keep filling in your draft.'
+- evalScript: >-
+    ${http.post('http://127.0.0.1:54329/__qa/control', {headers: {'Content-Type': 'application/json'}, body: JSON.stringify({fail: []})})}
+- tapOn:
+    text: 'Share plan'
+    enabled: true
+- assertVisible: 'plan details'
+- evalScript: ${output.partial = json(http.get('http://127.0.0.1:54329/__qa/state').body).tables.activities.filter(function(p) { return p.name === output.partialName; })[0]}
+- assertTrue:
+    condition: ${output.partial && output.partial.starts_at === null && output.partial.ends_at === null && !output.partial.location_name && !output.partial.location_address && !output.partial.cover_image_url && !output.partial.description && output.partial.external_url === 'https://example.test/partial-camp'}
+    label: The partial listing remains useful without borrowing another camp's facts
+- takeScreenshot: plans-partial-manual-fallback-shared

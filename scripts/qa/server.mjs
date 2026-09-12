@@ -1,8 +1,12 @@
 /** Local-only, explicit test double for native screen QA. No production access. */
 import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
+import { planLinkPreview } from './fixtures.mjs';
 
-const port = 54329;
+// These fictional San Francisco plans use one explicit zone on every QA host.
+process.env.TZ = 'America/Los_Angeles';
+const port = Number(process.env.VILLAGE_QA_PORT ?? 54329);
+if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('Invalid local QA port');
 const id = (n) => `99000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const now = () => new Date().toISOString();
 const date = (offset, hour = 0) => {
@@ -32,13 +36,14 @@ const plan = (n, name, day, extra = {}) => ({
   created_by: parents[1].id, published: true, visibility: 'connections',
   location_name: venues[0].name, location_address: 'Dolores Park, San Francisco',
   external_url: null, external_source_key: null, cover_image_url: null,
+  plan_kind: 'gathering', schedule_kind: 'once', schedule_days: [], schedule_timezone: 'America/Los_Angeles',
   all_day: false, updated_at: now(), cancelled_at: null, created_at: date(-2), ...extra,
 });
 const tables = {
   parents, venues,
   activities: [
     plan(301, 'Today: come picnic', 0, { all_day: true, starts_at: date(0), ends_at: null, emoji: '🧺' }),
-    plan(302, 'Art club with friends', 1, { external_url: 'https://example.test/art-club', emoji: '🎨' }),
+    plan(302, 'Art club with friends', 1, { external_url: 'https://example.test/art-club', external_source_key: 'url:https://example.test/art-club/', plan_kind: 'signup', emoji: '🎨' }),
     plan(303, 'Camping under the stars', 3, { all_day: true, starts_at: date(3), ends_at: date(5), emoji: '⛺', created_by: parents[0].id }),
     plan(304, 'Last weekend at the park', -3, { emoji: '🌳' }),
     plan(305, 'Raincheck playground morning', 2, { cancelled_at: now(), emoji: '☔' }),
@@ -69,6 +74,13 @@ const failures = new Set();
 let failAfterMutation = null;
 const mutations = [];
 const uploads = new Map();
+function recordMutation(name, method, body) {
+  mutations.push({ name, method, body });
+  if (failAfterMutation?.trigger === `${name}:${method}`) {
+    for (const failure of failAfterMutation.fail) failures.add(failure);
+    failAfterMutation = null;
+  }
+}
 const user = { id: id(101), aud: 'authenticated', role: 'authenticated', email: 'parent@example.test', email_confirmed_at: date(-30), user_metadata: { full_name: 'Alex Rivera' }, app_metadata: { provider: 'email', providers: ['email'] }, created_at: date(-30) };
 const session = () => {
   const exp = Math.floor(Date.now() / 1000) + 86400;
@@ -122,6 +134,10 @@ function participants(planIds) {
 }
 function rpc(name, body) {
   if (name === 'plan_participants') return participants(body.p_plan_ids);
+  if (name === 'plan_shared_by') return tables.activities.filter((p) => body.p_plan_ids.includes(p.id)).flatMap((p) => {
+    const sharer = parents.find((person) => person.id === p.created_by);
+    return sharer ? [{ plan_id: p.id, parent_id: sharer.id, display_name: sharer.display_name, avatar_color: sharer.avatar_color, avatar_initials: sharer.avatar_initials, avatar_url: sharer.avatar_url, profile_visible: true }] : [];
+  });
   if (name === 'mutual_friend_count') return 0;
   if (name === 'get_my_phone') return null;
   if (name === 'submit_parent_report') {
@@ -129,21 +145,41 @@ function rpc(name, body) {
     return randomUUID(); // The RPC request is recorded in mutations below.
   }
   if (name === 'set_plan_rsvp') {
+    const activity = tables.activities.find((p) => p.id === body.p_plan);
+    if (!activity || activity.cancelled_at) throw new Error('Plan not found');
+    if (!['going', 'interested', 'out'].includes(body.p_state)) throw new Error('Invalid RSVP');
     let row = tables.activity_interactions.find((r) => r.activity_id === body.p_plan && r.parent_id === id(1));
     if (!row) { row = { id: randomUUID(), activity_id: body.p_plan, parent_id: id(1), created_at: now(), rsvp_note: null }; tables.activity_interactions.push(row); }
-    Object.assign(row, { state: body.p_state, state_changed_at: now() }, body.p_note === undefined ? {} : { rsvp_note: body.p_note || null });
+    Object.assign(row, { state: body.p_state, state_changed_at: now() }, body.p_note == null ? {} : { rsvp_note: body.p_note.trim() || null });
     return row;
   }
   if (name === 'clear_plan_rsvp') { tables.activity_interactions = tables.activity_interactions.filter((r) => !(r.activity_id === body.p_plan && r.parent_id === id(1))); return null; }
   if (name === 'cancel_plan') { const p = tables.activities.find((a) => a.id === body.p_plan); if (!p) throw new Error('Plan not found'); p.cancelled_at = now(); return null; }
-  if (name === 'create_plan_v2' || name === 'update_plan_v2') {
-    const values = Object.fromEntries(Object.entries(body).map(([key, value]) => [key.slice(2), value]));
-    let p = name === 'update_plan_v2' ? tables.activities.find((a) => a.id === body.p_plan) : null;
-    if (name === 'update_plan_v2' && !p) throw new Error('Plan not found');
+  if (['create_plan_v2', 'update_plan_v2', 'create_plan_v3', 'update_plan_v3'].includes(name)) {
+    const values = Object.fromEntries(Object.entries(body).filter(([key]) => key !== 'p_plan' && key !== 'p_invited_parent_ids').map(([key, value]) => [key.slice(2), value]));
+    const invitees = [...new Set(body.p_invited_parent_ids ?? [])];
+    const editing = name.startsWith('update_');
+    let p = editing ? tables.activities.find((a) => a.id === body.p_plan) : null;
+    if (editing && (!p || p.created_by !== id(1) || p.cancelled_at)) throw new Error('Plan not found');
+    if (!values.name?.trim()) throw new Error('Give the plan a name');
+    if (values.visibility === 'invited' && !invitees.length) throw new Error('Choose at least one connection');
+    if (invitees.some((personId) => ![id(2), id(3)].includes(personId))) throw new Error('Plans can only invite your current connections');
+    if (values.ends_at && (!values.starts_at || Date.parse(values.ends_at) < Date.parse(values.starts_at))) throw new Error('Choose an end after the start of the plan');
+    if (name.endsWith('_v3')) {
+      if (!['gathering', 'signup'].includes(values.plan_kind)) throw new Error('Invalid plan kind');
+      if (!['once', 'weekly'].includes(values.schedule_kind)) throw new Error('Invalid schedule kind');
+      if (!Array.isArray(values.schedule_days)) throw new Error('Invalid schedule days');
+      if (values.schedule_kind === 'weekly' && (!values.starts_at || !values.ends_at || !values.schedule_days.length)) throw new Error('Choose the weekly dates and days');
+      if (values.schedule_days.some((day) => !Number.isInteger(day) || day < 0 || day > 6)) throw new Error('Invalid schedule days');
+    }
+    values.name = values.name.trim();
+    for (const field of ['description', 'emoji', 'location_name', 'location_address', 'external_url', 'external_source_key', 'cover_image_url']) {
+      if (field in values) values[field] = values[field]?.trim() || null;
+    }
     if (!p) { p = plan(0, values.name, 1, { id: randomUUID(), created_by: id(1), venue_id: null }); tables.activities.push(p); }
     Object.assign(p, values, { updated_at: now() });
     tables.plan_invites = tables.plan_invites.filter((i) => i.plan_id !== p.id);
-    for (const invited_parent_id of values.invited_parent_ids ?? []) tables.plan_invites.push({ plan_id: p.id, invited_parent_id });
+    for (const invited_parent_id of values.visibility === 'invited' ? invitees : []) tables.plan_invites.push({ plan_id: p.id, invited_parent_id });
     return { plan: p, notified_parent_ids: [] };
   }
   throw new Error(`Unsupported QA RPC: ${name}`);
@@ -197,6 +233,11 @@ createServer(async (req, res) => {
     if (url.pathname === '/auth/v1/logout') return send(204, null);
     const name = url.pathname.split('/').at(-1);
     if (failures.has(name) || failures.has(`${name}:${req.method}`)) return send(503, { message: 'The local test server is simulating an unavailable connection.', code: 'QA_UNAVAILABLE' });
+    if (url.pathname === '/functions/v1/plan-link-preview' && req.method === 'POST') {
+      if (!req.headers.authorization?.startsWith('Bearer ')) return send(401, { error: 'Sign in to import a listing' });
+      try { return send(200, planLinkPreview(body.url)); }
+      catch (error) { return send(422, { error: error.message }); }
+    }
     if (url.pathname === '/functions/v1/place-search' && req.method === 'POST') {
       // Fictional provider contract: selection must resolve details before saving.
       if (!body.sessionToken) return send(400, { error: 'Missing search session' });
@@ -206,7 +247,7 @@ createServer(async (req, res) => {
     }
     if (url.pathname.startsWith('/rest/v1/rpc/')) {
       const result = rpc(name, body);
-      if (!['plan_participants', 'mutual_friend_count'].includes(name)) mutations.push({ name, body });
+      if (!['plan_participants', 'plan_shared_by', 'mutual_friend_count', 'get_my_phone'].includes(name)) recordMutation(name, req.method, body);
       return send(200, result);
     }
     if (!url.pathname.startsWith('/rest/v1/') || !tables[name]) throw new Error(`Unsupported QA endpoint: ${req.method} ${url.pathname}`);
@@ -225,11 +266,7 @@ createServer(async (req, res) => {
     else if (req.method === 'DELETE') tables[name] = tables[name].filter((row) => !rows.includes(row));
     else if (!['GET', 'HEAD'].includes(req.method)) throw new Error(`Unsupported QA method: ${req.method}`);
     if (['POST', 'PATCH', 'DELETE'].includes(req.method)) {
-      mutations.push({ name, method: req.method, body });
-      if (failAfterMutation?.trigger === `${name}:${req.method}`) {
-        for (const failure of failAfterMutation.fail) failures.add(failure);
-        failAfterMutation = null;
-      }
+      recordMutation(name, req.method, body);
     }
     const order = url.searchParams.get('order');
     if (order) {

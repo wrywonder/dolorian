@@ -210,10 +210,10 @@ export function PlanDetailScreen({ id }: PlanDetailScreenProps) {
             {!activity.cancelled_at ? (
               <>
                 {isSignup ? <View style={{ gap: spacing.sm }}>
-                  <Text style={styles.helpLeft}>Sign up with the organizer, then let friends know. Your response here doesn’t register you.</Text>
+                  <Text style={styles.helpLeft}>Sign up with the organizer, then let friends know.</Text>
                   {activity.external_url ? <Pressable accessibilityRole="link" onPress={openListing} style={styles.signupButton}><Text style={styles.signupButtonText}>open signup page ↗</Text></Pressable> : null}
                 </View> : null}
-                {activity.schedule_kind === 'weekly' ? <Text style={styles.helpLeft}>One response for the whole plan. Add your team, camp week or any exceptions below.</Text> : null}
+                {activity.schedule_kind === 'weekly' ? <Text style={styles.helpLeft}>One response for the whole plan. Add any exceptions below.</Text> : null}
                 <View style={styles.rsvpRow}>
                   <RsvpButton label={rsvpCopy.going} emoji="✓" selected={state === 'going'} disabled={saving} onPress={() => setRsvp('going')} />
                   <RsvpButton label={rsvpCopy.interested} emoji="♡" selected={state === 'interested'} disabled={saving} onPress={() => setRsvp('interested')} />

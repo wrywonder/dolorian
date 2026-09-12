@@ -12,6 +12,9 @@ and recovery, not Supabase authentication, RLS, push delivery, or device geofenc
 The server listens only on loopback. Data resets on restart. Unknown endpoints fail
 explicitly. It supports the specific journeys covered in this pass, not arbitrary
 Supabase queries. Do not configure a release build with these environment values.
+Fixture timestamps use `America/Los_Angeles` regardless of the server host's zone.
+The native scenarios assume the simulator and Maestro driver also use that zone;
+time-zone conversion cases are covered by the separate schedule regression tests.
 
 To simulate failures, POST JSON to `http://127.0.0.1:54329/__qa/control`, for example
 `{"fail":["posts"]}` or `{"fail":["post_comments:POST"]}`. Clear with `{"fail":[]}`.
@@ -86,6 +89,10 @@ signing. Close the development client's first-run menu before starting the flows
 The control endpoint also accepts `failAfterMutation`, e.g.
 `{"failAfterMutation":{"trigger":"parent_locations:POST","fail":["parent_locations:GET"]}}`
 to prove a successfully saved visit remains stoppable when its next refresh fails.
+The same mechanism works for RPC writes: use trigger `set_plan_rsvp:POST` with
+failure `activities:GET` to retain a successful response while its refresh fails.
+Failures occur after recording/persisting the triggering write; resetting the
+control does not roll back the saved fictional data.
 
 ## Database policies
 
@@ -109,7 +116,9 @@ reproduces the baseline failures before this pass's privacy migrations.
 
 `plan-place-keyboard.yaml` creates a plan through place search, resolves and edits
 its address, saves/reopens it, checks search failure without losing the previous
-place, and saves a manual place name. The fixture returns **Maple Playground in
+place, rejects an address-details request after suggestions have loaded, and
+saves a manual place name. Cancellation must also remove the keyboard's Done
+toolbar. The fixture returns **Maple Playground in
 Test City**, not a live Google result. Provider authentication/request/response
 and failure contracts are separately tested in `tests/place-search.test.ts`.
 
@@ -125,3 +134,54 @@ asserting/tapping it, and inspect the saved frame. Native text inputs can expose
 their label and value separately; use the actual field value when checking a
 reopened address. Select All before replacing an address so a cursor in the
 middle cannot split the old text.
+
+## Simple Plans coordination
+
+Run these flows sequentially after login against the updated local server:
+
+1. `plans-gatherings.yaml`: private house gathering with individual friends,
+   unsaved Back protection, failed save/draft retry, date-to-decide edit, and park
+   birthday with autocomplete, meetup instructions and a supporting link that
+   keeps gathering attendance wording.
+2. `plans-programs.yaml`: imported soccer on Saturdays, camp on weekdays with
+   daily hours, and family-specific attendance notes that do not change the
+   shared schedule.
+3. `plans-import-recovery.yaml`: open existing coordination for a duplicate
+   listing, replace a complete import with a partial one without retaining its
+   facts, and recover an editable draft from a failed import.
+4. `plans-recovery.yaml`: save an RSVP note, fail its immediate refresh, retry
+   without a duplicate write, then reject/retry a response change.
+5. `plans-calendar.yaml`: after the programs flow, open Saturday soccer, verify
+   it is absent on Sunday, and find camp on Wednesday. It reloads the app first
+   to reset the calendar month while keeping the fictional server data.
+6. `plans-date-edit.yaml`: change the installed native date picker, create a
+   dated plan with an end time, then explicitly change it to date-to-decide.
+   It verifies the exact selected timestamp, that hidden date bounds were cleared and
+   that sharing while typing does not leave a stale Done toolbar on detail.
+7. `plans-reimport.yaml`: after the programs flow, save personal camp details
+   and meetup instructions, then reopen and reread the same listing. The exact
+   title, recurring schedule, local edits and family RSVP note must survive.
+8. `plans-enlarged-text.yaml`: with the simulator set to `accessibility-medium`,
+   create an undated plan using Share above the keyboard and open the existing
+   picnic's response sheet. Inspect the editor and every response choice, then
+   close the sheet. Restore the simulator's previous size after the run, including
+   on failure. This is a bounded Dynamic Type check, not a VoiceOver audit.
+
+Keep the existing `plans.yaml` and `plan-place-keyboard.yaml` as regressions for
+today's all-day plans, invitation toggling, editing/navigation, and place-search
+failure. Inspect the new screenshots on both supported simulator sizes; a
+successful accessibility assertion alone does not establish keyboard clearance.
+
+The explicit listing fixtures all use `https://example.test/`: `summer-camp`
+returns next Monday–Friday 9–3, `soccer-league` returns a Saturday season 10–11,
+`art-club` matches an existing plan, `partial-camp` returns no reliable schedule
+or place, and `unavailable` returns a provider failure. The server never fetches
+these URLs. Unknown listings fail rather than producing a success fixture.
+
+`node scripts/qa/test-server.mjs` checks these HTTP fixture contracts on isolated
+loopback port 54330, including v3 persistence, exact invites, sharer identity and
+post-write failure injection. It starts and stops its own server; it does not
+touch a running native fixture server on 54329. Set `VILLAGE_QA_TEST_PORT` to use
+another free local port. These checks establish the fixture's behavior, while
+Node schedule tests and the separate SQL harness verify application logic and
+database authorization. They do not verify hosted Supabase or Google services.

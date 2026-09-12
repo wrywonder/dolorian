@@ -1,0 +1,56 @@
+appId: com.dolorian.app
+name: Enlarged Plans editor and response sheet stay usable
+---
+# Set the simulator to accessibility-medium before running, then restore large.
+- runFlow: reload-local.yaml
+- openLink: 'dolorian://plan/new'
+- assertVisible: 'make a little plan'
+- assertVisible:
+    text: 'Share plan'
+    enabled: false
+- takeScreenshot: plans-enlarged-editor
+- evalScript: ${output.largeName = 'QA bigger text picnic ' + Date.now()}
+- scrollUntilVisible:
+    element: 'Plan name.*'
+    direction: DOWN
+    centerElement: false
+- tapOn: 'Plan name.*'
+- inputText: ${output.largeName}
+- assertVisible: 'Done typing'
+- takeScreenshot: plans-enlarged-keyboard-share
+- tapOn:
+    text: 'Share plan'
+    enabled: true
+- assertVisible: 'plan details'
+- assertNotVisible: 'Done typing'
+- evalScript: ${output.largePlan = json(http.get('http://127.0.0.1:54329/__qa/state').body).tables.activities.filter(function(p) { return p.name === output.largeName; })[0]}
+- assertTrue: ${Boolean(output.largePlan && output.largePlan.starts_at === null && output.largePlan.visibility === 'connections')}
+- openLink: 'dolorian://plans'
+- tapOn: 'All plans'
+- runFlow:
+    when:
+      visible: 'Show list'
+    commands:
+      - tapOn: 'Show list'
+- scrollUntilVisible:
+    element: '.*: Today: come picnic'
+    direction: DOWN
+    centerElement: true
+- takeScreenshot: plans-enlarged-response-entry
+- tapOn: '.*: Today: come picnic'
+- assertVisible: "I'm going.*"
+- assertVisible: 'Maybe.*'
+- takeScreenshot: plans-enlarged-response-sheet
+- scrollUntilVisible:
+    element: 'Can’t make it.*'
+    direction: DOWN
+    centerElement: false
+- assertVisible: 'Can’t make it.*'
+- scrollUntilVisible:
+    element: 'never mind'
+    direction: DOWN
+    centerElement: false
+- takeScreenshot: plans-enlarged-response-sheet-bottom
+- tapOn: 'never mind'
+- assertNotVisible: "I'm going.*"
+- assertVisible: 'All plans'

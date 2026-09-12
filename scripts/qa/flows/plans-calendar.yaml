@@ -1,0 +1,52 @@
+appId: com.dolorian.app
+name: Weekly plans appear on their actual calendar days
+---
+# Reload resets the calendar to the current month and loads the latest bundle.
+- runFlow: reload-local.yaml
+- runScript: plans-calendar-control.js
+- openLink: 'dolorian://plans'
+- tapOn: 'All plans'
+- takeScreenshot: plans-list-overview
+- tapOn: 'Show calendar'
+- runFlow:
+    when:
+      true: ${output.calendar.saturdayNextMonth}
+    commands:
+      - tapOn: 'Next month'
+- tapOn: ${output.calendar.saturday}
+- scrollUntilVisible:
+    element: ${'.*' + output.calendar.soccerName + '.*'}
+    direction: DOWN
+    centerElement: false
+- assertVisible: ${'.*' + output.calendar.soccerName + '.*'}
+- takeScreenshot: plans-calendar-saturday-soccer
+- scrollUntilVisible:
+    element: 'Next month'
+    direction: UP
+    centerElement: false
+- runFlow:
+    when:
+      true: ${output.calendar.sundayNextMonth}
+    commands:
+      - tapOn: 'Next month'
+- tapOn: ${output.calendar.sunday}
+- assertNotVisible: ${'.*' + output.calendar.soccerName + '.*'}
+- takeScreenshot: plans-calendar-sunday-no-soccer
+- runFlow:
+    when:
+      true: ${output.calendar.wednesdayNextMonth}
+    commands:
+      - tapOn: 'Next month'
+- runFlow:
+    when:
+      true: ${output.calendar.wednesdayPreviousMonth}
+    commands:
+      - tapOn: 'Previous month'
+- tapOn: ${output.calendar.wednesday}
+- scrollUntilVisible:
+    element: ${'.*' + output.calendar.campName + '.*'}
+    direction: DOWN
+    centerElement: false
+- assertVisible: ${'.*' + output.calendar.campName + '.*'}
+- assertNotVisible: ${'.*' + output.calendar.soccerName + '.*'}
+- takeScreenshot: plans-calendar-wednesday-camp
