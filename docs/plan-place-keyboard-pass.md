@@ -32,9 +32,13 @@ is disabled). Never expose the key in Expo public environment variables.
 The function was deployed to the existing Village project and verified ACTIVE
 (version 1). Its server-only Google secret is present, and a live request without
 a user session returns 401. No database migration or application-data write was
-performed. Authenticated live Google search remains unverified: automatic
-approval review rejected using the owner's emailed OTP for this smoke test, so
-that sign-in was not completed.
+performed. After explicit user approval, an authenticated live smoke test passed
+on 2026-09-12 UTC: searching "Dolores Park San Francisco" returned five real
+Google suggestions (HTTP 200, 660 ms), and selecting Mission Dolores Park
+returned its full address (HTTP 200, 447 ms). These are single-request timings,
+not performance benchmarks. A one-character query returned 400; missing and
+invalid user tokens each returned 401. The temporary test session was signed out
+with local scope afterward, leaving other device sessions unchanged.
 
 The app fixes were committed and pushed as `7dc04d9` on
 `codex/coordination-quality-pass`. EAS production build 1.0.0 (25),
@@ -54,9 +58,10 @@ Dependencies were unchanged in this pass; the native production build succeeded.
 - TypeScript, 68 Node regression tests, Deno check of the Edge Function, and the
   iOS production-mode bundle export passed.
 - Native checks use the real iOS development build with fictional loopback HTTP
-  fixtures. The provider transport is covered by protocol tests, not a live
-  Google request. Hosted deployment and secret presence are verified; live
-  authenticated Google responses/key restrictions remain unverified.
+  fixtures. Protocol tests cover provider transport; the separate authenticated
+  smoke test above verified real Google autocomplete and details through the
+  hosted function with its configured key. It did not publish a real plan or
+  exercise the TestFlight UI on a physical device.
 - Focused-field native check passed on iPhone 16e: the entire lower report
   textarea stays above the keyboard, and scrolling exposes Submit.
 - Android, physical-device keyboards, and VoiceOver have not been exercised in
