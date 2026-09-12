@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Keyboard, Modal, Pressable, Text, TextInput, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import * as Crypto from 'expo-crypto';
 import { Icon } from '@/components/ui';
 import { KeyboardFrame } from '@/components/ui/KeyboardFrame';
@@ -89,6 +89,8 @@ export function PlanPlacePicker({ name, address, disabled, onChange, onBusyChang
         </View>
       </Pressable>
       <Modal visible={open} animationType="slide" presentationStyle="fullScreen" onRequestClose={() => closeSearch()} onShow={() => searchInput.current?.focus()}>
+        {/* A native modal owns a separate window; measure its own safe area. */}
+        <SafeAreaProvider>
         <SafeAreaView style={{ flex: 1, backgroundColor: colors.cream }}>
           <KeyboardFrame accessibilityViewIsModal>
             <View style={styles.searchHeader}>
@@ -110,6 +112,7 @@ export function PlanPlacePicker({ name, address, disabled, onChange, onBusyChang
             </FormScrollView>
           </KeyboardFrame>
         </SafeAreaView>
+        </SafeAreaProvider>
       </Modal>
       {!open ? <>
         {manual ? <TextInput accessibilityLabel="Place name" editable={!disabled} value={name} onChangeText={(value) => onChange(value, address)} maxLength={200} placeholder="Our house, a favorite park…" placeholderTextColor={colors.taupe} style={styles.field} /> : null}
