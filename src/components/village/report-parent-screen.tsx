@@ -1,5 +1,7 @@
 import { useState } from 'react';
-import { Alert, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Alert, Pressable, Text, TextInput, View } from 'react-native';
+import { FormScrollView as ScrollView } from '@/components/ui/FormScrollView';
+import { KeyboardFrame } from '@/components/ui/KeyboardFrame';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Icon, TerracottaButton } from '@/components/ui';
@@ -41,17 +43,19 @@ export function ReportParentScreen({ parentId }: { parentId: UUID }) {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.cream }} edges={['top', 'bottom']}>
-      <View style={{ height: 56, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center' }}>
-        <Pressable onPress={() => router.back()} hitSlop={10} style={styles.iconButton}><View style={{ transform: [{ rotate: '180deg' }] }}><Icon name="chevron.right" size={19} color={colors.dark} /></View></Pressable>
-        <Text style={{ flex: 1, textAlign: 'center', fontFamily: fonts.sansExtra, fontSize: 14, color: colors.dark }}>report a concern</Text><View style={{ width: 40 }} />
-      </View>
-      <ScrollView contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 20, paddingBottom: 50, gap: 18 }}>
-        <View><Text style={styles.eyebrow}>PRIVATE SAFETY REPORT</Text><Text style={{ fontFamily: fonts.serifRegular, fontSize: 34, lineHeight: 37, color: colors.dark, paddingTop: 4 }}>what should we know?</Text><Text style={styles.help}>The other parent won’t be told who submitted this report.</Text></View>
-        <View style={styles.card}>{REASONS.map((item) => <Pressable key={item.key} onPress={() => setReason(item.key)} style={styles.row}><View style={[styles.radio, reason === item.key && { borderColor: colors.terracotta, backgroundColor: colors.terracotta }]}>{reason === item.key ? <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: colors.white }} /> : null}</View><Text style={styles.rowLabel}>{item.label}</Text></Pressable>)}</View>
-        <View><Text style={styles.eyebrow}>DETAILS</Text><TextInput value={details} onChangeText={setDetails} multiline maxLength={2000} placeholder="Add anything that will help us understand what happened." placeholderTextColor={colors.taupe} style={styles.details} /><Text style={[styles.help, { textAlign: 'right' }]}>{details.length}/2000</Text></View>
-        {error ? <Text selectable style={{ fontFamily: fonts.sansSemi, fontSize: 12, color: colors.terracotta }}>{error}</Text> : null}
-        <TerracottaButton label={saving ? 'submitting…' : 'submit private report →'} onPress={submit} disabled={!reason || saving} fullWidth />
-      </ScrollView>
+      <KeyboardFrame>
+        <View style={{ height: 56, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center' }}>
+          <Pressable onPress={() => router.back()} hitSlop={10} style={styles.iconButton}><View style={{ transform: [{ rotate: '180deg' }] }}><Icon name="chevron.right" size={19} color={colors.dark} /></View></Pressable>
+          <Text style={{ flex: 1, textAlign: 'center', fontFamily: fonts.sansExtra, fontSize: 14, color: colors.dark }}>report a concern</Text><View style={{ width: 40 }} />
+        </View>
+        <ScrollView keyboardDismissMode="on-drag" contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 20, paddingBottom: 50, gap: 18 }}>
+          <View><Text style={styles.eyebrow}>PRIVATE SAFETY REPORT</Text><Text style={{ fontFamily: fonts.serifRegular, fontSize: 34, lineHeight: 37, color: colors.dark, paddingTop: 4 }}>what should we know?</Text><Text style={styles.help}>The other parent won’t be told who submitted this report.</Text></View>
+          <View style={styles.card}>{REASONS.map((item) => <Pressable key={item.key} onPress={() => setReason(item.key)} style={styles.row}><View style={[styles.radio, reason === item.key && { borderColor: colors.terracotta, backgroundColor: colors.terracotta }]}>{reason === item.key ? <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: colors.white }} /> : null}</View><Text style={styles.rowLabel}>{item.label}</Text></Pressable>)}</View>
+          <View><Text style={styles.eyebrow}>DETAILS</Text><TextInput value={details} onChangeText={setDetails} multiline maxLength={2000} placeholder="Add anything that will help us understand what happened." placeholderTextColor={colors.taupe} style={styles.details} /><Text style={[styles.help, { textAlign: 'right' }]}>{details.length}/2000</Text></View>
+          {error ? <Text selectable style={{ fontFamily: fonts.sansSemi, fontSize: 12, color: colors.terracotta }}>{error}</Text> : null}
+          <TerracottaButton label={saving ? 'submitting…' : 'submit private report →'} onPress={submit} disabled={!reason || saving} fullWidth />
+        </ScrollView>
+      </KeyboardFrame>
     </SafeAreaView>
   );
 }

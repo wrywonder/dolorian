@@ -4,12 +4,13 @@ import {
   Alert,
   Pressable,
   RefreshControl,
-  ScrollView,
   Switch,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import { FormScrollView as ScrollView } from '@/components/ui/FormScrollView';
+import { KeyboardFrame } from '@/components/ui/KeyboardFrame';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AvatarCircle, Icon } from '@/components/ui';
@@ -151,223 +152,226 @@ export function VillageScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.cream }} edges={['top']}>
-      <View style={{ paddingHorizontal: 16, paddingTop: 4, paddingBottom: 10, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-          onPress={() => router.back()}
-          hitSlop={10}
-          style={styles.iconButton}
-        >
-          <View style={{ transform: [{ rotate: '180deg' }] }}>
-            <Icon name="chevron.right" size={19} color={colors.dark} />
+      <KeyboardFrame>
+        <View style={{ paddingHorizontal: 16, paddingTop: 4, paddingBottom: 10, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+            onPress={() => router.back()}
+            hitSlop={10}
+            style={styles.iconButton}
+          >
+            <View style={{ transform: [{ rotate: '180deg' }] }}>
+              <Icon name="chevron.right" size={19} color={colors.dark} />
+            </View>
+          </Pressable>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.eyebrow}>YOUR VILLAGE</Text>
+            <Text style={{ fontFamily: fonts.serifRegular, fontSize: 28, color: colors.dark }}>people you count on</Text>
           </View>
-        </Pressable>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.eyebrow}>YOUR VILLAGE</Text>
-          <Text style={{ fontFamily: fonts.serifRegular, fontSize: 28, color: colors.dark }}>people you count on</Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Invite a parent"
+            onPress={() => router.push('/add-to-village' as never)}
+            style={[styles.iconButton, { backgroundColor: colors.terracotta }]}
+          >
+            <Icon name="person.2" size={20} color={colors.white} />
+          </Pressable>
         </View>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Invite a parent"
-          onPress={() => router.push('/add-to-village' as never)}
-          style={[styles.iconButton, { backgroundColor: colors.terracotta }]}
-        >
-          <Icon name="person.2" size={20} color={colors.white} />
-        </Pressable>
-      </View>
 
-      <View style={{ borderBottomWidth: 1, borderBottomColor: colors.rule }}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 7, paddingBottom: 11 }}>
-          {TAB_OPTIONS.map((option) => {
-            const selected = tab === option.key;
-            const count = option.key === 'requests' ? incoming.length + outgoing.length
-              : option.key === 'blocked' ? blocked.length
-                : option.key === 'invites' ? activeInvites.length : 0;
-            return (
-              <Pressable key={option.key} onPress={() => setTab(option.key)} style={[styles.tab, selected && styles.tabSelected]}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                  <Text style={[styles.tabText, selected && { color: colors.white }]}>{option.label}</Text>
-                  {count ? (
-                    <View style={[styles.tabCount, selected && styles.tabCountSelected]}>
-                      <Text style={[styles.tabCountText, selected && { color: colors.dark }]}>{count}</Text>
-                    </View>
-                  ) : null}
-                </View>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
-      </View>
-
-      {loading ? (
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <ActivityIndicator color={colors.terracotta} />
-        </View>
-      ) : (
-        <ScrollView
-          contentInsetAdjustmentBehavior="automatic"
-          keyboardShouldPersistTaps="handled"
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={colors.terracotta} />}
-          contentContainerStyle={{ padding: 16, paddingBottom: 60, gap: 16 }}
-        >
-          {error ? <ErrorBanner message={error} /> : null}
-
-          {tab === 'friends' ? (
-            <>
-              <View style={styles.searchBox}>
-                <Icon name="search" size={18} color={colors.taupe} />
-                <TextInput
-                  value={query}
-                  onChangeText={setQuery}
-                  placeholder="Search names, neighborhoods, or notes"
-                  placeholderTextColor={colors.taupe}
-                  autoCapitalize="none"
-                  style={{ flex: 1, fontFamily: fonts.sansSemi, fontSize: 14, color: colors.dark }}
-                />
-              </View>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 7 }}>
-                {(['favorites', 'name', 'recent'] as SortMode[]).map((mode) => (
-                  <FilterChip key={mode} label={mode} selected={sortMode === mode} onPress={() => setSortMode(mode)} />
-                ))}
-                <FilterChip label="out now" selected={outOnly} onPress={() => setOutOnly((value) => !value)} />
-              </ScrollView>
-
-              <Section title={`${connected.length} connection${connected.length === 1 ? '' : 's'}`} eyebrow="YOUR PEOPLE">
-                {visibleConnections.length ? visibleConnections.map((item) => (
-                  <VillageRow
-                    key={item.connection.id}
-                    name={item.parent.display_name}
-                    subtitle={`${item.parent.neighborhood ?? 'Village parent'}${outIds.has(item.parent.id) ? ' · out now' : ''}`}
-                    initials={item.parent.avatar_initials}
-                    tone={item.parent.avatar_color as AvatarTone}
-                    imageUrl={item.parent.avatar_url}
-                    onPress={() => router.push(`/profile/${item.parent.id}`)}
-                    action={
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                        <Pressable onPress={() => toggleFavorite(item)} hitSlop={10} style={styles.rowAction}>
-                          {busyId === `favorite-${item.parent.id}` ? <ActivityIndicator size="small" color={colors.terracotta} /> : (
-                            <Icon name={item.preference.favorite ? 'star.fill' : 'star'} size={19} color={item.preference.favorite ? colors.amberLight : colors.taupe} />
-                          )}
-                        </Pressable>
-                        <Pressable onPress={() => router.push(`/connection-manage/${item.parent.id}` as never)} hitSlop={10} style={styles.rowAction}>
-                          <Icon name="ellipsis" size={20} color={colors.taupe} />
-                        </Pressable>
+        <View style={{ borderBottomWidth: 1, borderBottomColor: colors.rule }}>
+          <ScrollView keyboardShouldPersistTaps="handled" horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 7, paddingBottom: 11 }}>
+            {TAB_OPTIONS.map((option) => {
+              const selected = tab === option.key;
+              const count = option.key === 'requests' ? incoming.length + outgoing.length
+                : option.key === 'blocked' ? blocked.length
+                  : option.key === 'invites' ? activeInvites.length : 0;
+              return (
+                <Pressable key={option.key} onPress={() => setTab(option.key)} style={[styles.tab, selected && styles.tabSelected]}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                    <Text style={[styles.tabText, selected && { color: colors.white }]}>{option.label}</Text>
+                    {count ? (
+                      <View style={[styles.tabCount, selected && styles.tabCountSelected]}>
+                        <Text style={[styles.tabCountText, selected && { color: colors.dark }]}>{count}</Text>
                       </View>
-                    }
-                  />
-                )) : <EmptyCopy text={connected.length ? 'No connections match these filters.' : 'Invite a parent to start building your village.'} />}
-              </Section>
-
-              {suggestions.length ? (
-                <Section title="people you may know" eyebrow="MUTUAL CONNECTIONS">
-                  {suggestions.map((person) => (
-                    <VillageRow
-                      key={person.id}
-                      name={person.display_name}
-                      subtitle={`${person.mutual_count} mutual connection${person.mutual_count === 1 ? '' : 's'}${person.neighborhood ? ` · ${person.neighborhood}` : ''}`}
-                      initials={person.avatar_initials}
-                      tone={person.avatar_color as AvatarTone}
-                      imageUrl={person.avatar_url}
-                      action={<SmallButton label="say hello" filled loading={busyId === `request-${person.id}`} onPress={() => run(`request-${person.id}`, () => data.requestConnection(person.id))} />}
-                    />
-                  ))}
-                </Section>
-              ) : null}
-            </>
-          ) : null}
-
-          {tab === 'requests' ? (
-            <>
-              <Section title="waiting for you" eyebrow="SAY HELLO">
-                {incoming.length ? incoming.map((item) => (
-                  <VillageRow
-                    key={item.connection.id}
-                    name={item.parent.display_name}
-                    subtitle={item.parent.neighborhood ?? 'Village parent'}
-                    initials={item.parent.avatar_initials}
-                    tone={item.parent.avatar_color}
-                    imageUrl={item.parent.avatar_url}
-                    onPress={() => router.push(`/profile/${item.parent.id}`)}
-                    action={<View style={{ flexDirection: 'row', gap: 6 }}>
-                      <SmallButton label="accept" filled loading={busyId === `accept-${item.parent.id}`} onPress={() => run(`accept-${item.parent.id}`, () => data.acceptConnection(item.parent.id))} />
-                      <SmallButton label="decline" loading={busyId === `decline-${item.parent.id}`} onPress={() => run(`decline-${item.parent.id}`, () => data.declineConnection(item.parent.id))} />
-                    </View>}
-                  />
-                )) : <EmptyCopy text="No incoming requests right now." />}
-              </Section>
-
-              <Section title="sent requests" eyebrow="WAITING ON THEM">
-                {outgoing.length ? outgoing.map((item) => (
-                  <VillageRow
-                    key={item.connection.id}
-                    name={item.parent.display_name}
-                    subtitle={`Sent ${relativeDate(item.connection.created_at)}`}
-                    initials={item.parent.avatar_initials}
-                    tone={item.parent.avatar_color}
-                    imageUrl={item.parent.avatar_url}
-                    action={<SmallButton label="cancel" loading={busyId === `cancel-${item.parent.id}`} onPress={() => run(`cancel-${item.parent.id}`, () => data.cancelConnectionRequest(item.parent.id))} />}
-                  />
-                )) : <EmptyCopy text="No sent requests are waiting." />}
-              </Section>
-
-              <Section title="notifications" eyebrow="KEEP ME POSTED">
-                <ToggleRow label="New connection requests" value={notifications.connection_requests} onValueChange={(value) => updateNotification('connection_requests', value)} />
-                <ToggleRow label="Accepted requests" value={notifications.connection_acceptances} onValueChange={(value) => updateNotification('connection_acceptances', value)} />
-                <ToggleRow label="Invite redemptions" value={notifications.invite_redemptions} onValueChange={(value) => updateNotification('invite_redemptions', value)} />
-                <ToggleRow label="Plan invitations" value={notifications.plan_invitations} onValueChange={(value) => updateNotification('plan_invitations', value)} />
-              </Section>
-            </>
-          ) : null}
-
-          {tab === 'invites' ? (
-            <>
-              <Pressable onPress={() => router.push('/add-to-village' as never)} style={styles.heroAction}>
-                <View style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: 'rgba(255,255,255,0.22)', alignItems: 'center', justifyContent: 'center' }}>
-                  <Icon name="qrcode" size={24} color={colors.white} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontFamily: fonts.sansExtra, fontSize: 15, color: colors.white }}>Invite a parent</Text>
-                  <Text style={{ fontFamily: fonts.sans, fontSize: 12, color: 'rgba(255,255,255,0.82)', paddingTop: 2 }}>Share a private link, QR code, or email</Text>
-                </View>
-                <Icon name="chevron.right" size={18} color={colors.white} />
-              </Pressable>
-              <Section title="active invites" eyebrow="PRIVATE & EXPIRING">
-                {activeInvites.length ? activeInvites.map((invite) => (
-                  <View key={invite.id} style={styles.inviteRow}>
-                    <View style={{ flex: 1 }}>
-                      <Text selectable style={{ fontFamily: fonts.monoBold, fontSize: 16, letterSpacing: 1.2, color: colors.dark }}>{invite.code}</Text>
-                      <Text style={styles.secondaryText}>{invite.use_count} of {invite.max_uses} joined · expires {shortDate(invite.expires_at)}</Text>
-                    </View>
-                    <SmallButton label="revoke" loading={busyId === `revoke-${invite.id}`} onPress={() => run(`revoke-${invite.id}`, () => data.revokeConnectionInvite(invite.id))} />
+                    ) : null}
                   </View>
-                )) : <EmptyCopy text="Create an invite when you’re ready to grow your village." />}
-              </Section>
-            </>
-          ) : null}
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </View>
 
-          {tab === 'blocked' ? (
-            <Section title="blocked parents" eyebrow="PRIVATE TO YOU">
-              {blocked.length ? blocked.map((person) => (
-                <VillageRow
-                  key={person.id}
-                  name={person.display_name}
-                  subtitle={`Blocked ${relativeDate(person.blocked_at)}`}
-                  initials={person.avatar_initials}
-                  tone={person.avatar_color as AvatarTone}
-                  imageUrl={person.avatar_url}
-                  action={<SmallButton label="unblock" loading={busyId === `unblock-${person.id}`} onPress={() => {
-                    Alert.alert(`Unblock ${person.display_name}?`, 'They will not be reconnected automatically.', [
-                      { text: 'Cancel', style: 'cancel' },
-                      { text: 'Unblock', onPress: () => run(`unblock-${person.id}`, () => data.unblockParent(person.id)) },
-                    ]);
-                  }} />}
-                />
-              )) : <EmptyCopy text="Parents you block will appear here. They can’t find your profile or see your activity." />}
-            </Section>
-          ) : null}
-        </ScrollView>
-      )}
+        {loading ? (
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+            <ActivityIndicator color={colors.terracotta} />
+          </View>
+        ) : (
+          <ScrollView
+            keyboardDismissMode="on-drag"
+            contentInsetAdjustmentBehavior="automatic"
+            keyboardShouldPersistTaps="handled"
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={colors.terracotta} />}
+            contentContainerStyle={{ padding: 16, paddingBottom: 60, gap: 16 }}
+          >
+            {error ? <ErrorBanner message={error} /> : null}
+
+            {tab === 'friends' ? (
+              <>
+                <View style={styles.searchBox}>
+                  <Icon name="search" size={18} color={colors.taupe} />
+                  <TextInput
+                    value={query}
+                    onChangeText={setQuery}
+                    placeholder="Search names, neighborhoods, or notes"
+                    placeholderTextColor={colors.taupe}
+                    autoCapitalize="none"
+                    style={{ flex: 1, fontFamily: fonts.sansSemi, fontSize: 14, color: colors.dark }}
+                  />
+                </View>
+                <ScrollView keyboardShouldPersistTaps="handled" horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 7 }}>
+                  {(['favorites', 'name', 'recent'] as SortMode[]).map((mode) => (
+                    <FilterChip key={mode} label={mode} selected={sortMode === mode} onPress={() => setSortMode(mode)} />
+                  ))}
+                  <FilterChip label="out now" selected={outOnly} onPress={() => setOutOnly((value) => !value)} />
+                </ScrollView>
+
+                <Section title={`${connected.length} connection${connected.length === 1 ? '' : 's'}`} eyebrow="YOUR PEOPLE">
+                  {visibleConnections.length ? visibleConnections.map((item) => (
+                    <VillageRow
+                      key={item.connection.id}
+                      name={item.parent.display_name}
+                      subtitle={`${item.parent.neighborhood ?? 'Village parent'}${outIds.has(item.parent.id) ? ' · out now' : ''}`}
+                      initials={item.parent.avatar_initials}
+                      tone={item.parent.avatar_color as AvatarTone}
+                      imageUrl={item.parent.avatar_url}
+                      onPress={() => router.push(`/profile/${item.parent.id}`)}
+                      action={
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                          <Pressable onPress={() => toggleFavorite(item)} hitSlop={10} style={styles.rowAction}>
+                            {busyId === `favorite-${item.parent.id}` ? <ActivityIndicator size="small" color={colors.terracotta} /> : (
+                              <Icon name={item.preference.favorite ? 'star.fill' : 'star'} size={19} color={item.preference.favorite ? colors.amberLight : colors.taupe} />
+                            )}
+                          </Pressable>
+                          <Pressable onPress={() => router.push(`/connection-manage/${item.parent.id}` as never)} hitSlop={10} style={styles.rowAction}>
+                            <Icon name="ellipsis" size={20} color={colors.taupe} />
+                          </Pressable>
+                        </View>
+                      }
+                    />
+                  )) : <EmptyCopy text={connected.length ? 'No connections match these filters.' : 'Invite a parent to start building your village.'} />}
+                </Section>
+
+                {suggestions.length ? (
+                  <Section title="people you may know" eyebrow="MUTUAL CONNECTIONS">
+                    {suggestions.map((person) => (
+                      <VillageRow
+                        key={person.id}
+                        name={person.display_name}
+                        subtitle={`${person.mutual_count} mutual connection${person.mutual_count === 1 ? '' : 's'}${person.neighborhood ? ` · ${person.neighborhood}` : ''}`}
+                        initials={person.avatar_initials}
+                        tone={person.avatar_color as AvatarTone}
+                        imageUrl={person.avatar_url}
+                        action={<SmallButton label="say hello" filled loading={busyId === `request-${person.id}`} onPress={() => run(`request-${person.id}`, () => data.requestConnection(person.id))} />}
+                      />
+                    ))}
+                  </Section>
+                ) : null}
+              </>
+            ) : null}
+
+            {tab === 'requests' ? (
+              <>
+                <Section title="waiting for you" eyebrow="SAY HELLO">
+                  {incoming.length ? incoming.map((item) => (
+                    <VillageRow
+                      key={item.connection.id}
+                      name={item.parent.display_name}
+                      subtitle={item.parent.neighborhood ?? 'Village parent'}
+                      initials={item.parent.avatar_initials}
+                      tone={item.parent.avatar_color}
+                      imageUrl={item.parent.avatar_url}
+                      onPress={() => router.push(`/profile/${item.parent.id}`)}
+                      action={<View style={{ flexDirection: 'row', gap: 6 }}>
+                        <SmallButton label="accept" filled loading={busyId === `accept-${item.parent.id}`} onPress={() => run(`accept-${item.parent.id}`, () => data.acceptConnection(item.parent.id))} />
+                        <SmallButton label="decline" loading={busyId === `decline-${item.parent.id}`} onPress={() => run(`decline-${item.parent.id}`, () => data.declineConnection(item.parent.id))} />
+                      </View>}
+                    />
+                  )) : <EmptyCopy text="No incoming requests right now." />}
+                </Section>
+
+                <Section title="sent requests" eyebrow="WAITING ON THEM">
+                  {outgoing.length ? outgoing.map((item) => (
+                    <VillageRow
+                      key={item.connection.id}
+                      name={item.parent.display_name}
+                      subtitle={`Sent ${relativeDate(item.connection.created_at)}`}
+                      initials={item.parent.avatar_initials}
+                      tone={item.parent.avatar_color}
+                      imageUrl={item.parent.avatar_url}
+                      action={<SmallButton label="cancel" loading={busyId === `cancel-${item.parent.id}`} onPress={() => run(`cancel-${item.parent.id}`, () => data.cancelConnectionRequest(item.parent.id))} />}
+                    />
+                  )) : <EmptyCopy text="No sent requests are waiting." />}
+                </Section>
+
+                <Section title="notifications" eyebrow="KEEP ME POSTED">
+                  <ToggleRow label="New connection requests" value={notifications.connection_requests} onValueChange={(value) => updateNotification('connection_requests', value)} />
+                  <ToggleRow label="Accepted requests" value={notifications.connection_acceptances} onValueChange={(value) => updateNotification('connection_acceptances', value)} />
+                  <ToggleRow label="Invite redemptions" value={notifications.invite_redemptions} onValueChange={(value) => updateNotification('invite_redemptions', value)} />
+                  <ToggleRow label="Plan invitations" value={notifications.plan_invitations} onValueChange={(value) => updateNotification('plan_invitations', value)} />
+                </Section>
+              </>
+            ) : null}
+
+            {tab === 'invites' ? (
+              <>
+                <Pressable onPress={() => router.push('/add-to-village' as never)} style={styles.heroAction}>
+                  <View style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: 'rgba(255,255,255,0.22)', alignItems: 'center', justifyContent: 'center' }}>
+                    <Icon name="qrcode" size={24} color={colors.white} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontFamily: fonts.sansExtra, fontSize: 15, color: colors.white }}>Invite a parent</Text>
+                    <Text style={{ fontFamily: fonts.sans, fontSize: 12, color: 'rgba(255,255,255,0.82)', paddingTop: 2 }}>Share a private link, QR code, or email</Text>
+                  </View>
+                  <Icon name="chevron.right" size={18} color={colors.white} />
+                </Pressable>
+                <Section title="active invites" eyebrow="PRIVATE & EXPIRING">
+                  {activeInvites.length ? activeInvites.map((invite) => (
+                    <View key={invite.id} style={styles.inviteRow}>
+                      <View style={{ flex: 1 }}>
+                        <Text selectable style={{ fontFamily: fonts.monoBold, fontSize: 16, letterSpacing: 1.2, color: colors.dark }}>{invite.code}</Text>
+                        <Text style={styles.secondaryText}>{invite.use_count} of {invite.max_uses} joined · expires {shortDate(invite.expires_at)}</Text>
+                      </View>
+                      <SmallButton label="revoke" loading={busyId === `revoke-${invite.id}`} onPress={() => run(`revoke-${invite.id}`, () => data.revokeConnectionInvite(invite.id))} />
+                    </View>
+                  )) : <EmptyCopy text="Create an invite when you’re ready to grow your village." />}
+                </Section>
+              </>
+            ) : null}
+
+            {tab === 'blocked' ? (
+              <Section title="blocked parents" eyebrow="PRIVATE TO YOU">
+                {blocked.length ? blocked.map((person) => (
+                  <VillageRow
+                    key={person.id}
+                    name={person.display_name}
+                    subtitle={`Blocked ${relativeDate(person.blocked_at)}`}
+                    initials={person.avatar_initials}
+                    tone={person.avatar_color as AvatarTone}
+                    imageUrl={person.avatar_url}
+                    action={<SmallButton label="unblock" loading={busyId === `unblock-${person.id}`} onPress={() => {
+                      Alert.alert(`Unblock ${person.display_name}?`, 'They will not be reconnected automatically.', [
+                        { text: 'Cancel', style: 'cancel' },
+                        { text: 'Unblock', onPress: () => run(`unblock-${person.id}`, () => data.unblockParent(person.id)) },
+                      ]);
+                    }} />}
+                  />
+                )) : <EmptyCopy text="Parents you block will appear here. They can’t find your profile or see your activity." />}
+              </Section>
+            ) : null}
+          </ScrollView>
+        )}
+      </KeyboardFrame>
     </SafeAreaView>
   );
 }

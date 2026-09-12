@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
+import { KeyboardFrame } from '@/components/ui/KeyboardFrame';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -129,108 +130,110 @@ export default function PlansScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.cream }} edges={['top']}>
-      <ScreenHeader
-        eyebrow="WHAT’S HAPPENING"
-        title="plans"
-        flourish="squiggle"
-        right={
-          <Pressable accessibilityRole="button" accessibilityLabel="Add a plan" onPress={() => router.push('/plan/new' as never)} style={styles.addButton}>
-            <Icon name="plus" size={21} color={colors.white} />
+      <KeyboardFrame>
+        <ScreenHeader
+          eyebrow="WHAT’S HAPPENING"
+          title="plans"
+          flourish="squiggle"
+          right={
+            <Pressable accessibilityRole="button" accessibilityLabel="Add a plan" onPress={() => router.push('/plan/new' as never)} style={styles.addButton}>
+              <Icon name="plus" size={21} color={colors.white} />
+            </Pressable>
+          }
+        />
+
+        <View style={styles.toolbar}>
+          <SegmentedControl
+            options={[{ value: 'list', label: 'List' }, { value: 'calendar', label: 'Calendar' }]}
+            value={viewMode}
+            onChange={(value) => setViewMode(value as ViewMode)}
+          />
+          <Pressable accessibilityRole="button" accessibilityLabel="Find and sort plans" accessibilityState={{ expanded: filtersOpen }} onPress={() => setFiltersOpen((open) => !open)} style={[styles.filterButton, filtersOpen && styles.filterButtonActive]}>
+            <Icon name={filtersOpen ? 'x' : 'search'} size={17} color={filtersOpen ? colors.white : colors.dark} />
+            <Text style={[styles.filterText, filtersOpen && { color: colors.white }]}>{hasFilters ? 'filters on' : 'find & sort'}</Text>
           </Pressable>
-        }
-      />
-
-      <View style={styles.toolbar}>
-        <SegmentedControl
-          options={[{ value: 'list', label: 'List' }, { value: 'calendar', label: 'Calendar' }]}
-          value={viewMode}
-          onChange={(value) => setViewMode(value as ViewMode)}
-        />
-        <Pressable accessibilityRole="button" accessibilityLabel="Find and sort plans" accessibilityState={{ expanded: filtersOpen }} onPress={() => setFiltersOpen((open) => !open)} style={[styles.filterButton, filtersOpen && styles.filterButtonActive]}>
-          <Icon name={filtersOpen ? 'x' : 'search'} size={17} color={filtersOpen ? colors.white : colors.dark} />
-          <Text style={[styles.filterText, filtersOpen && { color: colors.white }]}>{hasFilters ? 'filters on' : 'find & sort'}</Text>
-        </Pressable>
-      </View>
-
-      <View style={styles.timeTabs}>
-        <TimeTab label="Upcoming" selected={timeRange === 'upcoming'} onPress={() => setTimeRange('upcoming')} />
-        <TimeTab label="Recent" selected={timeRange === 'recent'} onPress={() => setTimeRange('recent')} />
-      </View>
-
-      {hasFilters && !filtersOpen ? (
-        <Pressable accessibilityRole="button" onPress={resetFilters} style={styles.resetFilters}>
-          <Text style={styles.clearText}>clear filters · show all plans</Text>
-        </Pressable>
-      ) : null}
-
-      {filtersOpen ? (
-        <View style={styles.filters}>
-          <View style={styles.searchField}>
-            <Icon name="search" size={16} color={colors.taupe} />
-            <TextInput
-              value={query}
-              onChangeText={setQuery}
-              placeholder="search plans, places, or activities"
-              placeholderTextColor={colors.taupe}
-              returnKeyType="search"
-              style={styles.searchInput}
-            />
-          </View>
-          <FilterGroup label="MY PLANS">
-            <FilterChip label="all plans" selected={participation === 'all'} onPress={() => setParticipation('all')} />
-            <FilterChip label="going & interested" selected={participation === 'joining'} onPress={() => setParticipation('joining')} />
-          </FilterGroup>
-          <FilterGroup label="WHO CAN SEE IT">
-            {AUDIENCE_FILTERS.map((filter) => (
-              <FilterChip key={filter.value} label={filter.label} selected={audience === filter.value} onPress={() => setAudience(filter.value)} />
-            ))}
-          </FilterGroup>
-          <FilterGroup label="SORT BY">
-            {SORTS.map((option) => (
-              <FilterChip key={option.value} label={option.label} selected={sort === option.value} onPress={() => setSort(option.value)} />
-            ))}
-          </FilterGroup>
         </View>
-      ) : null}
 
-      {loading ? (
-        <View style={{ paddingHorizontal: 14, paddingTop: 18 }}><ActivityCardSkeleton /><ActivityCardSkeleton /></View>
-      ) : viewMode === 'calendar' ? (
-        <CalendarView
-          month={calendarMonth}
-          selectedDay={selectedDay}
-          plans={filtered}
-          selectedPlans={selectedPlans}
-          error={error}
-          refreshing={refreshing}
-          onRefresh={onRefresh}
-          onPrevious={() => {
-            const previous = subMonths(calendarMonth, 1);
-            setCalendarMonth(previous);
-            setSelectedDay(previous);
-          }}
-          onNext={() => {
-            const next = addMonths(calendarMonth, 1);
-            setCalendarMonth(next);
-            setSelectedDay(next);
-          }}
-          onSelectDay={setSelectedDay}
-          onOpen={(id) => router.push(`/plan/${id}` as never)}
-          onReload={load}
-        />
-      ) : (
-        <ListView
-          plans={filtered}
-          error={error}
-          refreshing={refreshing}
-          onRefresh={onRefresh}
-          onOpen={(id) => router.push(`/plan/${id}` as never)}
-          onReload={load}
-          hasFilters={hasFilters}
-          onResetFilters={resetFilters}
-          timeRange={timeRange}
-        />
-      )}
+        <View style={styles.timeTabs}>
+          <TimeTab label="Upcoming" selected={timeRange === 'upcoming'} onPress={() => setTimeRange('upcoming')} />
+          <TimeTab label="Recent" selected={timeRange === 'recent'} onPress={() => setTimeRange('recent')} />
+        </View>
+
+        {hasFilters && !filtersOpen ? (
+          <Pressable accessibilityRole="button" onPress={resetFilters} style={styles.resetFilters}>
+            <Text style={styles.clearText}>clear filters · show all plans</Text>
+          </Pressable>
+        ) : null}
+
+        {filtersOpen ? (
+          <View style={styles.filters}>
+            <View style={styles.searchField}>
+              <Icon name="search" size={16} color={colors.taupe} />
+              <TextInput
+                value={query}
+                onChangeText={setQuery}
+                placeholder="search plans, places, or activities"
+                placeholderTextColor={colors.taupe}
+                returnKeyType="search"
+                style={styles.searchInput}
+              />
+            </View>
+            <FilterGroup label="MY PLANS">
+              <FilterChip label="all plans" selected={participation === 'all'} onPress={() => setParticipation('all')} />
+              <FilterChip label="going & interested" selected={participation === 'joining'} onPress={() => setParticipation('joining')} />
+            </FilterGroup>
+            <FilterGroup label="WHO CAN SEE IT">
+              {AUDIENCE_FILTERS.map((filter) => (
+                <FilterChip key={filter.value} label={filter.label} selected={audience === filter.value} onPress={() => setAudience(filter.value)} />
+              ))}
+            </FilterGroup>
+            <FilterGroup label="SORT BY">
+              {SORTS.map((option) => (
+                <FilterChip key={option.value} label={option.label} selected={sort === option.value} onPress={() => setSort(option.value)} />
+              ))}
+            </FilterGroup>
+          </View>
+        ) : null}
+
+        {loading ? (
+          <View style={{ paddingHorizontal: 14, paddingTop: 18 }}><ActivityCardSkeleton /><ActivityCardSkeleton /></View>
+        ) : viewMode === 'calendar' ? (
+          <CalendarView
+            month={calendarMonth}
+            selectedDay={selectedDay}
+            plans={filtered}
+            selectedPlans={selectedPlans}
+            error={error}
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            onPrevious={() => {
+              const previous = subMonths(calendarMonth, 1);
+              setCalendarMonth(previous);
+              setSelectedDay(previous);
+            }}
+            onNext={() => {
+              const next = addMonths(calendarMonth, 1);
+              setCalendarMonth(next);
+              setSelectedDay(next);
+            }}
+            onSelectDay={setSelectedDay}
+            onOpen={(id) => router.push(`/plan/${id}` as never)}
+            onReload={load}
+          />
+        ) : (
+          <ListView
+            plans={filtered}
+            error={error}
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            onOpen={(id) => router.push(`/plan/${id}` as never)}
+            onReload={load}
+            hasFilters={hasFilters}
+            onResetFilters={resetFilters}
+            timeRange={timeRange}
+          />
+        )}
+      </KeyboardFrame>
     </SafeAreaView>
   );
 }
@@ -247,7 +250,7 @@ function ListView({ plans, error, refreshing, onRefresh, onOpen, onReload, hasFi
   timeRange: TimeRange;
 }) {
   return (
-    <ScrollView
+    <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
       contentContainerStyle={styles.listContent}
       showsVerticalScrollIndicator={false}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.terracotta} />}
@@ -310,7 +313,7 @@ function CalendarView({ month, selectedDay, plans, selectedPlans, error, refresh
   });
 
   return (
-    <ScrollView
+    <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
       contentContainerStyle={styles.calendarContent}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.terracotta} />}
       showsVerticalScrollIndicator={false}
@@ -383,7 +386,7 @@ function FilterGroup({ label, children }: { label: string; children: ReactNode }
   return (
     <View style={{ gap: 7 }}>
       <Text style={styles.eyebrow}>{label}</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 7 }}>{children}</ScrollView>
+      <ScrollView keyboardShouldPersistTaps="handled" horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 7 }}>{children}</ScrollView>
     </View>
   );
 }

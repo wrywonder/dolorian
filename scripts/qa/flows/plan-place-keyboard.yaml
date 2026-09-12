@@ -1,0 +1,110 @@
+appId: com.dolorian.app
+name: Plan place search, keyboard controls, persistence, and manual fallback
+onFlowComplete:
+  - evalScript: >-
+      ${http.post('http://127.0.0.1:54329/__qa/control', {headers: {'Content-Type': 'application/json'}, body: JSON.stringify({fail: []})})}
+---
+# Discard unsaved screens from earlier runs, keeping the fictional login session.
+- stopApp
+- openLink: 'dolorian://expo-development-client/?url=http%3A%2F%2F127.0.0.1%3A8082'
+- runFlow:
+    when:
+      visible: '^Open$'
+    commands:
+      - tapOn: '^Open$'
+- extendedWaitUntil:
+    visible: 'buzz'
+    timeout: 60000
+- evalScript: ${output.name = 'QA park meetup ' + Date.now()}
+- openLink: 'dolorian://plan/new'
+- runFlow:
+    when:
+      visible: '^Open$'
+    commands:
+      - tapOn: '^Open$'
+- scrollUntilVisible:
+    element: 'Plan name.*'
+    direction: DOWN
+    centerElement: true
+- tapOn: 'Plan name.*'
+- inputText: ${output.name}
+- assertVisible: 'Done typing'
+- tapOn: 'Done typing'
+- scrollUntilVisible:
+    element: 'Find a place'
+    direction: DOWN
+    centerElement: true
+- tapOn: 'Find a place'
+- inputText: 'Maple Test City'
+- extendedWaitUntil:
+    visible: 'Choose Maple Playground, Maple Street, Test City'
+    timeout: 15000
+- takeScreenshot: place-suggestions-keyboard
+# A single tap while the keyboard is open must select and resolve the place.
+- tapOn: 'Choose Maple Playground, Maple Street, Test City'
+- assertVisible: 'Change place, Maple Playground'
+- assertNotVisible: 'Search plan places'
+- takeScreenshot: place-selected
+- tapOn: 'Address or meetup note.*'
+- longPressOn: 'Address or meetup note.*'
+- tapOn: 'Select All'
+- eraseText: 1
+- inputText: '123 Maple Street, Test City - meet by the swings'
+- assertVisible: 'Done typing'
+- swipe:
+    from:
+      text: 'Address or meetup note.*'
+    direction: UP
+    duration: 500
+- assertNotVisible: 'Done typing'
+- scrollUntilVisible:
+    element: 'publish plan.*'
+    direction: DOWN
+    centerElement: true
+- takeScreenshot: plan-publish-after-scroll
+- tapOn:
+    text: 'publish plan.*'
+    enabled: true
+- assertVisible: 'plan details'
+- evalScript: ${output.plan = json(http.get('http://127.0.0.1:54329/__qa/state').body).tables.activities.filter(function(p) { return p.name === output.name; })[0]}
+- assertTrue:
+    condition: ${output.plan && output.plan.location_name === 'Maple Playground' && output.plan.location_address.includes('123 Maple Street, Test City') && output.plan.location_address.includes('meet by the swings')}
+    label: Selected name and resolved address with meetup note persist through the real plan save
+- tapOn: 'edit'
+- scrollUntilVisible:
+    element: 'Change place, Maple Playground'
+    direction: DOWN
+    centerElement: true
+- assertVisible: '.*123 Maple Street, Test City - meet by the swings.*'
+# Search failure must preserve the saved place and support manual entry.
+- evalScript: >-
+    ${http.post('http://127.0.0.1:54329/__qa/control', {headers: {'Content-Type': 'application/json'}, body: JSON.stringify({fail: ['place-search']})})}
+- tapOn: 'Change place, Maple Playground'
+- inputText: 'Maple'
+- assertVisible: 'Place search couldn’t connect.*'
+- tapOn: 'Done typing'
+- scrollUntilVisible:
+    element: 'cancel search'
+    direction: DOWN
+- tapOn: 'cancel search'
+- assertVisible: 'Change place, Maple Playground'
+- tapOn: 'or enter the place myself'
+- scrollUntilVisible:
+    element: 'Place name.*'
+    direction: DOWN
+    centerElement: true
+- tapOn: 'Place name.*'
+- longPressOn: 'Place name.*'
+- tapOn: 'Select All'
+- eraseText: 1
+- inputText: 'Our back garden'
+- tapOn: 'Done typing'
+- evalScript: >-
+    ${http.post('http://127.0.0.1:54329/__qa/control', {headers: {'Content-Type': 'application/json'}, body: JSON.stringify({fail: []})})}
+- scrollUntilVisible:
+    element: 'save changes.*'
+    direction: DOWN
+- tapOn: 'save changes.*'
+- assertVisible: 'plan details'
+- evalScript: ${output.edited = json(http.get('http://127.0.0.1:54329/__qa/state').body).tables.activities.filter(function(p) { return p.id === output.plan.id; })[0]}
+- assertTrue: ${output.edited.location_name === 'Our back garden'}

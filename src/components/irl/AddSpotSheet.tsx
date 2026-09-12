@@ -1,15 +1,14 @@
 import { useState } from 'react';
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
   Modal,
-  Platform,
   Pressable,
-  ScrollView,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import { FormScrollView as ScrollView } from '@/components/ui/FormScrollView';
+import { KeyboardFrame } from '@/components/ui/KeyboardFrame';
 import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
 import { colors, fonts, spacing } from '@/lib/constants';
@@ -92,16 +91,14 @@ export function AddSpotSheet({ open, onClose, onCreated }: AddSpotSheetProps) {
 
   return (
     <Modal visible={open} transparent animationType="slide" onRequestClose={() => { if (!saving) onClose(); }}>
-      <KeyboardAvoidingView
-        style={{ flex: 1, justifyContent: 'flex-end' }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+      <KeyboardFrame accessibilityViewIsModal style={{ flex: 1, justifyContent: 'flex-end' }}>
         <Pressable
           style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(45,36,27,0.35)' }}
           disabled={saving}
           onPress={onClose}
         />
         <ScrollView
+          keyboardDismissMode="on-drag"
           keyboardShouldPersistTaps="handled"
           style={{ maxHeight: '88%', backgroundColor: colors.cream, borderTopLeftRadius: 28, borderTopRightRadius: 28 }}
           contentContainerStyle={{
@@ -235,7 +232,7 @@ export function AddSpotSheet({ open, onClose, onCreated }: AddSpotSheetProps) {
             <TerracottaButton label="save hangout →" onPress={save} />
           )}
         </ScrollView>
-      </KeyboardAvoidingView>
+      </KeyboardFrame>
     </Modal>
   );
 }

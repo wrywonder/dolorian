@@ -15,7 +15,7 @@ const parent = (n, name, tone) => ({
   id: id(n), auth_user_id: id(100 + n), display_name: name,
   avatar_color: tone, avatar_initials: name.split(' ').map((s) => s[0]).join(''),
   neighborhood: 'Noe Valley', avatar_url: null, bio: 'Usually carrying snacks.',
-  profile_background: 'cream', profile_background_url: null, visibility_mode: 'disabled',
+  profile_background: 'peach', profile_background_url: null, visibility_mode: 'disabled',
   calendar_connected_at: null, calendar_provider: null, created_at: date(-30),
 });
 const parents = [parent(1, 'Alex Rivera', 'peach'), parent(2, 'Jamie Chen', 'sage'), parent(3, 'Sam Patel', 'golden')];
@@ -123,6 +123,11 @@ function participants(planIds) {
 function rpc(name, body) {
   if (name === 'plan_participants') return participants(body.p_plan_ids);
   if (name === 'mutual_friend_count') return 0;
+  if (name === 'get_my_phone') return null;
+  if (name === 'submit_parent_report') {
+    if (!parents.some((p) => p.id === body.other) || !body.p_reason || typeof body.p_details !== 'string') throw new Error('Invalid fixture report');
+    return randomUUID(); // The RPC request is recorded in mutations below.
+  }
   if (name === 'set_plan_rsvp') {
     let row = tables.activity_interactions.find((r) => r.activity_id === body.p_plan && r.parent_id === id(1));
     if (!row) { row = { id: randomUUID(), activity_id: body.p_plan, parent_id: id(1), created_at: now(), rsvp_note: null }; tables.activity_interactions.push(row); }
@@ -192,6 +197,13 @@ createServer(async (req, res) => {
     if (url.pathname === '/auth/v1/logout') return send(204, null);
     const name = url.pathname.split('/').at(-1);
     if (failures.has(name) || failures.has(`${name}:${req.method}`)) return send(503, { message: 'The local test server is simulating an unavailable connection.', code: 'QA_UNAVAILABLE' });
+    if (url.pathname === '/functions/v1/place-search' && req.method === 'POST') {
+      // Fictional provider contract: selection must resolve details before saving.
+      if (!body.sessionToken) return send(400, { error: 'Missing search session' });
+      if (body.placeId === 'qa-playground') return send(200, { place: { id: 'qa-playground', name: 'Maple Playground', address: '123 Maple Street, Test City' } });
+      if (body.placeId) return send(404, { error: 'Unknown fixture place' });
+      return send(200, { suggestions: String(body.query).toLowerCase().includes('maple') ? [{ id: 'qa-playground', name: 'Maple Playground', address: 'Maple Street, Test City' }] : [] });
+    }
     if (url.pathname.startsWith('/rest/v1/rpc/')) {
       const result = rpc(name, body);
       if (!['plan_participants', 'mutual_friend_count'].includes(name)) mutations.push({ name, body });

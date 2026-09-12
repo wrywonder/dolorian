@@ -1,0 +1,80 @@
+appId: com.dolorian.app
+name: Lower form controls and number-pad dismissal
+---
+# Discard unsaved screens from earlier runs, keeping the fictional login session.
+- stopApp
+- openLink: 'dolorian://expo-development-client/?url=http%3A%2F%2F127.0.0.1%3A8082'
+- runFlow:
+    when:
+      visible: '^Open$'
+    commands:
+      - tapOn: '^Open$'
+- extendedWaitUntil:
+    visible: 'buzz'
+    timeout: 60000
+# Formerly no keyboard avoidance at all: the safety report's lower textarea.
+- evalScript: ${output.details = 'Fictional keyboard QA report ' + Date.now()}
+- openLink: 'dolorian://report/99000000-0000-4000-8000-000000000002'
+- runFlow:
+    when:
+      visible: '^Open$'
+    commands:
+      - tapOn: '^Open$'
+- tapOn: 'Privacy concern'
+- scrollUntilVisible:
+    element: 'Add anything that will help.*'
+    direction: DOWN
+    centerElement: true
+- tapOn: 'Add anything that will help.*'
+- inputText: ${output.details}
+- assertVisible: 'Done typing'
+- assertVisible: ${'.*' + output.details + '.*'}
+- takeScreenshot: report-keyboard
+# Force a real drag: XCTest can report covered controls as visible.
+- swipe:
+    from:
+      text: 'DETAILS'
+    direction: UP
+    duration: 500
+- assertNotVisible: 'Done typing'
+- scrollUntilVisible:
+    element: 'submit private report.*'
+    direction: DOWN
+    centerElement: true
+- takeScreenshot: report-submit-reachable
+- tapOn: 'submit private report.*'
+- assertVisible: 'Report received'
+- evalScript: ${output.reports = json(http.get('http://127.0.0.1:54329/__qa/state').body).mutations.filter(function(m) { return m.name === 'submit_parent_report' && m.body.p_details === output.details; })}
+- assertTrue: ${output.reports.length === 1}
+- tapOn: '^Done$'
+
+# A phone pad has no return key. The shared Done control must dismiss it.
+- openLink: 'dolorian://settings'
+- scrollUntilVisible:
+    element: '\+1 415 555 0123'
+    direction: DOWN
+    centerElement: true
+- tapOn: '\+1 415 555 0123'
+- inputText: '2025550100'
+- assertVisible: 'Done typing'
+- takeScreenshot: profile-phone-pad
+- tapOn: 'Done typing'
+- assertNotVisible: 'Done typing'
+- scrollUntilVisible:
+    element: 'save changes.*'
+    direction: DOWN
+    centerElement: true
+- assertVisible: 'save changes.*'
+- takeScreenshot: profile-bottom-controls
+# Leave this fictional phone edit unsaved; this flow tests layout, not contacts.
+- openLink: 'dolorian://irl'
+- tapOn: 'I’m here · come join.*'
+- tapOn: 'Search places'
+- inputText: 'Dolores'
+- assertVisible: 'Done typing'
+- tapOn: 'Dolores Park'
+- takeScreenshot: check-in-search-keyboard
+- tapOn: 'Done typing'
+- tapOn: 'share this visit.*'
+- assertVisible: 'I’m heading out'
+- tapOn: 'I’m heading out'

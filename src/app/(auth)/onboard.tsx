@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
-  ScrollView,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import { FormScrollView as ScrollView } from '@/components/ui/FormScrollView';
+import { KeyboardFrame } from '@/components/ui/KeyboardFrame';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { supabase } from '@/lib/supabase';
@@ -71,8 +71,9 @@ export default function OnboardScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.cream }} edges={['top', 'bottom']}>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={process.env.EXPO_OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardFrame style={{ flex: 1 }}>
         <ScrollView
+          keyboardDismissMode="on-drag"
           contentInsetAdjustmentBehavior="automatic"
           contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 34, paddingBottom: 42, gap: 20 }}
           keyboardShouldPersistTaps="handled"
@@ -133,7 +134,7 @@ export default function OnboardScreen() {
 
           <Text style={styles.privacy}>Your profile is shown only according to Village’s connection and plan privacy rules.</Text>
         </ScrollView>
-      </KeyboardAvoidingView>
+      </KeyboardFrame>
     </SafeAreaView>
   );
 }

@@ -2,14 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
-  ScrollView,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import { FormScrollView as ScrollView } from '@/components/ui/FormScrollView';
+import { KeyboardFrame } from '@/components/ui/KeyboardFrame';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
@@ -152,10 +151,7 @@ export default function ComposeScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.cream }} edges={['top', 'bottom']}>
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+      <KeyboardFrame style={{ flex: 1 }}>
         {/* Header */}
         <View
           style={{
@@ -191,6 +187,7 @@ export default function ComposeScreen() {
         </View>
 
         <ScrollView
+          keyboardDismissMode="on-drag"
           contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 40 }}
           keyboardShouldPersistTaps="handled"
         >
@@ -390,7 +387,7 @@ export default function ComposeScreen() {
             )}
           </View>
         </ScrollView>
-      </KeyboardAvoidingView>
+      </KeyboardFrame>
     </SafeAreaView>
   );
 }

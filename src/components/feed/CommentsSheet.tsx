@@ -1,15 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import { KeyboardFrame } from '@/components/ui/KeyboardFrame';
 import * as Haptics from 'expo-haptics';
 import { colors, fonts, type AvatarTone } from '@/lib/constants';
 import { data } from '@/lib/data';
@@ -94,10 +93,7 @@ export function CommentsSheet({ open, postId, onClose, onCommentAdded }: Comment
 
   return (
     <Modal visible={open} transparent animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        style={{ flex: 1, justifyContent: 'flex-end' }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+      <KeyboardFrame accessibilityViewIsModal style={{ flex: 1, justifyContent: 'flex-end' }}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Close comments"
@@ -144,6 +140,7 @@ export function CommentsSheet({ open, postId, onClose, onCommentAdded }: Comment
             </Text>
           ) : comments && comments.length > 0 ? (
             <ScrollView
+              keyboardDismissMode="on-drag"
               style={{ flexGrow: 0 }}
               contentContainerStyle={{ paddingHorizontal: 22, gap: 14, paddingBottom: 8 }}
               keyboardShouldPersistTaps="handled"
@@ -245,7 +242,7 @@ export function CommentsSheet({ open, postId, onClose, onCommentAdded }: Comment
             <Text style={{ paddingHorizontal: 22, paddingTop: 4, fontFamily: fonts.mono, fontSize: 11, color: tooLong ? colors.terracotta : colors.taupe }}>{draftLength.toLocaleString('en-US')} / {COMMENT_MAX_LENGTH.toLocaleString('en-US')}</Text>
           ) : null}
         </View>
-      </KeyboardAvoidingView>
+      </KeyboardFrame>
     </Modal>
   );
 }

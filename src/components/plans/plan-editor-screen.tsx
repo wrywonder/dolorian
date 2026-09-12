@@ -1,15 +1,17 @@
+import { PlanPlacePicker } from './PlanPlacePicker';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
+  Keyboard,
   Platform,
   Pressable,
-  ScrollView,
   Switch,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import { FormScrollView as ScrollView } from '@/components/ui/FormScrollView';
+import { KeyboardFrame } from '@/components/ui/KeyboardFrame';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -58,6 +60,7 @@ export function PlanEditorScreen() {
   const [allDay, setAllDay] = useState(false);
   const [visibility, setVisibility] = useState<PlanVisibility>('connections');
   const [invitedIds, setInvitedIds] = useState<Set<UUID>>(new Set());
+  const [choosingPlace, setChoosingPlace] = useState(false);
   const [locationName, setLocationName] = useState('');
   const [locationAddress, setLocationAddress] = useState('');
   const [coverImageUrl, setCoverImageUrl] = useState('');
@@ -120,7 +123,7 @@ export function PlanEditorScreen() {
   }, [id, editing, importRequests, loadAttempt]);
 
   const importLink = async () => {
-    if (savePending.current || importPending.current || !canEdit) return;
+    if (savePending.current || importPending.current || choosingPlace || !canEdit) return;
     if (!sourceUrl.trim()) { setError('Paste a public link first.'); return; }
     const isCurrent = importRequests.begin();
     importPending.current = true;
@@ -165,7 +168,7 @@ export function PlanEditorScreen() {
   };
 
   const save = async () => {
-    if (savePending.current || importPending.current || !canEdit) return;
+    if (savePending.current || importPending.current || choosingPlace || !canEdit) return;
     savePending.current = true;
     setSaving(true);
     setError(null);
@@ -232,12 +235,12 @@ export function PlanEditorScreen() {
         </View>
       </View>
 
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardFrame style={{ flex: 1 }}>
         <ScrollView
           style={{ flex: 1 }}
           contentInsetAdjustmentBehavior="automatic"
           keyboardShouldPersistTaps="handled"
-          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+          keyboardDismissMode="on-drag"
           contentContainerStyle={styles.content}
         >
           <Section eyebrow="IMPORT" title="start with a link">
@@ -265,7 +268,7 @@ export function PlanEditorScreen() {
               placeholderTextColor={colors.taupe}
               style={styles.field}
             />
-            <SecondaryButton disabled={saving || !canEdit} label={importing ? 'reading the page…' : 'prefill plan details'} loading={importing} onPress={importLink} />
+            <SecondaryButton disabled={choosingPlace || saving || !canEdit} label={importing ? 'reading the page…' : 'prefill plan details'} loading={importing} onPress={importLink} />
             {importResult ? (
               <View style={styles.importSuccess}>
                 <Icon name="check.circle" size={20} color={colors.sage} />
@@ -312,8 +315,7 @@ export function PlanEditorScreen() {
               <TextInput accessibilityLabel="Plan name" editable={!importing && !saving && canEdit} value={name} onChangeText={setName} maxLength={140} placeholder="Saturday farmers market" placeholderTextColor={colors.taupe} style={[styles.field, { flex: 1 }]} />
             </View>
             <TextInput accessibilityLabel="Plan details" editable={!importing && !saving && canEdit} value={description} onChangeText={setDescription} maxLength={600} multiline placeholder="A few useful details for other parents…" placeholderTextColor={colors.taupe} style={[styles.field, styles.multiline]} />
-            <TextInput accessibilityLabel="Place name" editable={!importing && !saving && canEdit} value={locationName} onChangeText={setLocationName} placeholder="Place name" placeholderTextColor={colors.taupe} style={styles.field} />
-            <TextInput accessibilityLabel="Address or meetup note" editable={!importing && !saving && canEdit} value={locationAddress} onChangeText={setLocationAddress} placeholder="Address or meetup note" placeholderTextColor={colors.taupe} style={styles.field} />
+            <PlanPlacePicker name={locationName} address={locationAddress} disabled={importing || saving || !canEdit} onBusyChange={setChoosingPlace} onChange={(placeName, address) => { setLocationName(placeName); setLocationAddress(address); }} />
           </Section>
 
           <Section eyebrow="WHEN" title="pick a day">
@@ -384,9 +386,9 @@ export function PlanEditorScreen() {
           </View>
 
           {error ? <Text selectable accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
-          <TerracottaButton label={saving ? 'saving plan…' : editing ? 'save changes →' : 'publish plan →'} onPress={save} disabled={saving || importing || !canEdit || !name.trim() || !date || (!allDay && !time) || Boolean(existingPlan && !createSeparatePlan)} fullWidth />
+          <TerracottaButton label={saving ? 'saving plan…' : editing ? 'save changes →' : 'publish plan →'} onPress={save} disabled={choosingPlace || saving || importing || !canEdit || !name.trim() || !date || (!allDay && !time) || Boolean(existingPlan && !createSeparatePlan)} fullWidth />
         </ScrollView>
-      </KeyboardAvoidingView>
+      </KeyboardFrame>
     </SafeAreaView>
   );
 }
@@ -423,7 +425,7 @@ function PickerField({ label, mode, dateValue, timeValue, onChange, compact, min
   return (
     <View style={{ flex: compact ? 0 : 1, minWidth: compact ? 112 : 0, gap: 5 }}>
       <Text style={styles.eyebrow}>{label}</Text>
-      <View style={styles.pickerField}>
+      <View style={styles.pickerField} onTouchStart={Keyboard.dismiss}>
         {Platform.OS === 'ios' ? picker : (
           <Pressable
             accessibilityRole="button"

@@ -104,3 +104,24 @@ and RLS, not the complete hosted Supabase service or external integrations.
 
 `SQL_TEST=file.test.sql` selects one suite; `MIGRATION_CUTOFF=20260819999999`
 reproduces the baseline failures before this pass's privacy migrations.
+
+## Place picker and keyboard regression
+
+`plan-place-keyboard.yaml` creates a plan through place search, resolves and edits
+its address, saves/reopens it, checks search failure without losing the previous
+place, and saves a manual place name. The fixture returns **Maple Playground in
+Test City**, not a live Google result. Provider authentication/request/response
+and failure contracts are separately tested in `tests/place-search.test.ts`.
+
+`forms-keyboard.yaml` covers the lower safety-report field and submit control,
+profile phone-pad dismissal and lower controls, and the IRL search sheet. It
+submits only a fictional report, leaves the fictional phone edit unsaved, and
+stops its test visit. Run sequentially with the existing Plans and feed flows.
+Use iPhone 16e for the smaller screen and iPhone 17 Pro for a second layout size.
+
+Inspect screenshots as well as accessibility assertions: iOS can report a button
+as visible while it is partly behind the keyboard. Centre a lower control before
+asserting/tapping it, and inspect the saved frame. Native text inputs can expose
+their label and value separately; use the actual field value when checking a
+reopened address. Select All before replacing an address so a cursor in the
+middle cannot split the old text.

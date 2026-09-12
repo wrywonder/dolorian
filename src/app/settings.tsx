@@ -2,13 +2,13 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  KeyboardAvoidingView,
   Pressable,
-  ScrollView,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import { FormScrollView as ScrollView } from '@/components/ui/FormScrollView';
+import { KeyboardFrame } from '@/components/ui/KeyboardFrame';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
@@ -242,10 +242,7 @@ export default function SettingsScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.cream }} edges={['top', 'bottom']}>
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={process.env.EXPO_OS === 'ios' ? 'padding' : undefined}
-      >
+      <KeyboardFrame style={{ flex: 1 }}>
         <View
           style={{
             height: 56,
@@ -272,6 +269,7 @@ export default function SettingsScreen() {
           </View>
         ) : (
           <ScrollView
+            keyboardDismissMode="on-drag"
             contentContainerStyle={{ paddingHorizontal: 22, paddingBottom: 48 }}
             keyboardShouldPersistTaps="handled"
           >
@@ -479,7 +477,7 @@ export default function SettingsScreen() {
             </View>
           </ScrollView>
         )}
-      </KeyboardAvoidingView>
+      </KeyboardFrame>
     </SafeAreaView>
   );
 }

@@ -2,12 +2,13 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
-  ScrollView,
   Share,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import { FormScrollView as ScrollView } from '@/components/ui/FormScrollView';
+import { KeyboardFrame } from '@/components/ui/KeyboardFrame';
 import * as Clipboard from 'expo-clipboard';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -103,106 +104,108 @@ export function AddToVillageScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.cream }} edges={['top', 'bottom']}>
-      <View style={styles.header}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Back" onPress={() => router.back()} hitSlop={10} style={styles.iconButton}>
-          <View style={{ transform: [{ rotate: '180deg' }] }}><Icon name="chevron.right" size={19} color={colors.dark} /></View>
-        </Pressable>
-        <Text style={styles.headerTitle}>add friends</Text>
-        <View style={{ width: 40 }} />
-      </View>
-
-      <ScrollView contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
-        <View>
-          <Text style={styles.eyebrow}>YOUR PRIVATE INVITE</Text>
-          <Text style={styles.title}>bring your people into Village</Text>
-          <Text style={styles.intro}>
-            Send one trusted link in WhatsApp, Messages, or wherever you already talk. They’ll see your profile before choosing to connect.
-          </Text>
+      <KeyboardFrame>
+        <View style={styles.header}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Back" onPress={() => router.back()} hitSlop={10} style={styles.iconButton}>
+            <View style={{ transform: [{ rotate: '180deg' }] }}><Icon name="chevron.right" size={19} color={colors.dark} /></View>
+          </Pressable>
+          <Text style={styles.headerTitle}>add friends</Text>
+          <View style={{ width: 40 }} />
         </View>
 
-        <View style={styles.shareCard}>
-          <View style={styles.shareIcon}>
-            {busy === 'load' ? <ActivityIndicator color={colors.terracotta} /> : <Icon name="person.2" size={26} color={colors.terracotta} />}
-          </View>
-          <Text style={styles.sectionTitle}>share your Village link</Text>
-          <Text style={styles.help}>
-            {invite
-              ? `This link works for up to ${invite.max_uses} parent${invite.max_uses === 1 ? '' : 's'} and can be revoked anytime.`
-              : 'Preparing one private link you can share and revoke anytime.'}
-          </Text>
-          <TerracottaButton
-            label={busy === 'share' ? 'opening sharing…' : 'share my link →'}
-            onPress={share}
-            fullWidth
-            disabled={unavailable}
-          />
-
-          <View style={styles.actionRow}>
-            <Pressable disabled={unavailable} onPress={copy} style={[styles.secondaryButton, unavailable && styles.disabled]}>
-              {busy === 'copy' ? <ActivityIndicator size="small" color={colors.terracotta} /> : <Icon name="link" size={17} color={colors.terracotta} />}
-              <Text style={styles.secondaryButtonText}>{copied ? 'copied!' : 'copy link'}</Text>
-            </Pressable>
-            <Pressable disabled={unavailable} onPress={() => setShowQr((value) => !value)} style={[styles.secondaryButton, unavailable && styles.disabled]}>
-              <Icon name="qrcode" size={18} color={colors.terracotta} />
-              <Text style={styles.secondaryButtonText}>{showQr ? 'hide QR' : 'show QR'}</Text>
-            </Pressable>
+        <ScrollView keyboardDismissMode="on-drag" contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
+          <View>
+            <Text style={styles.eyebrow}>YOUR PRIVATE INVITE</Text>
+            <Text style={styles.title}>bring your people into Village</Text>
+            <Text style={styles.intro}>
+              Send one trusted link in WhatsApp, Messages, or wherever you already talk. They’ll see your profile before choosing to connect.
+            </Text>
           </View>
 
-          {showQr && link ? (
-            <View style={styles.qrArea}>
-              <View style={styles.qrCode}>
-                <QRCode value={link} size={184} color={colors.dark} backgroundColor={colors.white} />
-              </View>
-              <Text style={styles.help}>Have your friend scan this with their phone camera.</Text>
+          <View style={styles.shareCard}>
+            <View style={styles.shareIcon}>
+              {busy === 'load' ? <ActivityIndicator color={colors.terracotta} /> : <Icon name="person.2" size={26} color={colors.terracotta} />}
             </View>
-          ) : null}
-
-          {invite ? (
-            <View style={styles.linkDetails}>
-              <Text style={styles.eyebrow}>BACKUP CODE</Text>
-              <Text selectable style={styles.inviteCode}>{invite.code}</Text>
-              <Text style={styles.help}>Link expires {formatDate(invite.expires_at)}</Text>
-            </View>
-          ) : null}
-        </View>
-
-        {error ? (
-          <View style={styles.errorCard}>
-            <Text selectable style={styles.error}>{error}</Text>
-            {!invite ? <Pressable onPress={loadInvite}><Text style={styles.retry}>try again</Text></Pressable> : null}
-          </View>
-        ) : null}
-
-        <Pressable onPress={() => setShowCodeEntry((value) => !value)} style={styles.codeDisclosure}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.eyebrow}>HAVE THEIR CODE?</Text>
-            <Text style={styles.codeDisclosureTitle}>enter an invite code</Text>
-          </View>
-          <View style={{ transform: [{ rotate: showCodeEntry ? '90deg' : '0deg' }] }}>
-            <Icon name="chevron.right" size={18} color={colors.taupe} />
-          </View>
-        </Pressable>
-
-        {showCodeEntry ? (
-          <View style={styles.codeCard}>
-            <TextInput
-              value={code}
-              onChangeText={(value) => setCode(value.toUpperCase())}
-              autoCapitalize="characters"
-              autoCorrect={false}
-              maxLength={36}
-              placeholder="8-character invite code"
-              placeholderTextColor={colors.taupe}
-              style={styles.field}
+            <Text style={styles.sectionTitle}>share your Village link</Text>
+            <Text style={styles.help}>
+              {invite
+                ? `This link works for up to ${invite.max_uses} parent${invite.max_uses === 1 ? '' : 's'} and can be revoked anytime.`
+                : 'Preparing one private link you can share and revoke anytime.'}
+            </Text>
+            <TerracottaButton
+              label={busy === 'share' ? 'opening sharing…' : 'share my link →'}
+              onPress={share}
+              fullWidth
+              disabled={unavailable}
             />
-            <Pressable disabled={busy !== null || !code.trim()} onPress={join} style={[styles.joinButton, (!code.trim() || busy !== null) && styles.disabled]}>
-              {busy === 'join' ? <ActivityIndicator color={colors.terracotta} /> : <><Icon name="wave" size={18} color={colors.terracotta} /><Text style={styles.secondaryButtonText}>connect</Text></>}
-            </Pressable>
-          </View>
-        ) : null}
 
-        <Text style={styles.privacy}>Connections are mutual, private, and always under your control.</Text>
-      </ScrollView>
+            <View style={styles.actionRow}>
+              <Pressable disabled={unavailable} onPress={copy} style={[styles.secondaryButton, unavailable && styles.disabled]}>
+                {busy === 'copy' ? <ActivityIndicator size="small" color={colors.terracotta} /> : <Icon name="link" size={17} color={colors.terracotta} />}
+                <Text style={styles.secondaryButtonText}>{copied ? 'copied!' : 'copy link'}</Text>
+              </Pressable>
+              <Pressable disabled={unavailable} onPress={() => setShowQr((value) => !value)} style={[styles.secondaryButton, unavailable && styles.disabled]}>
+                <Icon name="qrcode" size={18} color={colors.terracotta} />
+                <Text style={styles.secondaryButtonText}>{showQr ? 'hide QR' : 'show QR'}</Text>
+              </Pressable>
+            </View>
+
+            {showQr && link ? (
+              <View style={styles.qrArea}>
+                <View style={styles.qrCode}>
+                  <QRCode value={link} size={184} color={colors.dark} backgroundColor={colors.white} />
+                </View>
+                <Text style={styles.help}>Have your friend scan this with their phone camera.</Text>
+              </View>
+            ) : null}
+
+            {invite ? (
+              <View style={styles.linkDetails}>
+                <Text style={styles.eyebrow}>BACKUP CODE</Text>
+                <Text selectable style={styles.inviteCode}>{invite.code}</Text>
+                <Text style={styles.help}>Link expires {formatDate(invite.expires_at)}</Text>
+              </View>
+            ) : null}
+          </View>
+
+          {error ? (
+            <View style={styles.errorCard}>
+              <Text selectable style={styles.error}>{error}</Text>
+              {!invite ? <Pressable onPress={loadInvite}><Text style={styles.retry}>try again</Text></Pressable> : null}
+            </View>
+          ) : null}
+
+          <Pressable onPress={() => setShowCodeEntry((value) => !value)} style={styles.codeDisclosure}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.eyebrow}>HAVE THEIR CODE?</Text>
+              <Text style={styles.codeDisclosureTitle}>enter an invite code</Text>
+            </View>
+            <View style={{ transform: [{ rotate: showCodeEntry ? '90deg' : '0deg' }] }}>
+              <Icon name="chevron.right" size={18} color={colors.taupe} />
+            </View>
+          </Pressable>
+
+          {showCodeEntry ? (
+            <View style={styles.codeCard}>
+              <TextInput
+                value={code}
+                onChangeText={(value) => setCode(value.toUpperCase())}
+                autoCapitalize="characters"
+                autoCorrect={false}
+                maxLength={36}
+                placeholder="8-character invite code"
+                placeholderTextColor={colors.taupe}
+                style={styles.field}
+              />
+              <Pressable disabled={busy !== null || !code.trim()} onPress={join} style={[styles.joinButton, (!code.trim() || busy !== null) && styles.disabled]}>
+                {busy === 'join' ? <ActivityIndicator color={colors.terracotta} /> : <><Icon name="wave" size={18} color={colors.terracotta} /><Text style={styles.secondaryButtonText}>connect</Text></>}
+              </Pressable>
+            </View>
+          ) : null}
+
+          <Text style={styles.privacy}>Connections are mutual, private, and always under your control.</Text>
+        </ScrollView>
+      </KeyboardFrame>
     </SafeAreaView>
   );
 }

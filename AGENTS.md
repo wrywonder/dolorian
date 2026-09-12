@@ -129,6 +129,19 @@ unconfigured Supabase client.
 - Reuse `data.getCurrentParentId()` / `useCurrentParentId`; do not add separate
   identity caches. Pending presence work must reject stale account identities.
 
+## Form keyboards and plan places
+
+- Use `KeyboardFrame` with `FormScrollView` for scrolling input forms. The frame
+  measures the header/safe-area offset and supplies Done; the scroll view reveals
+  the focused input after keyboard resizing. Do not add another avoiding view or
+  automatic keyboard inset around them.
+- Modal sheets put `accessibilityViewIsModal` on `KeyboardFrame`, so their Done
+  control stays inside the accessibility boundary.
+- Plans place search uses the authenticated `place-search` Edge Function and the
+  existing server-only `GOOGLE_MAPS_API_KEY`. Keep manual place entry available,
+  preserve the draft when search fails/cancels, and never expose that key in Expo
+  public environment variables.
+
 ## Conventions
 
 - **TypeScript is strict** (`noUncheckedIndexedAccess`, `noImplicitOverride`,

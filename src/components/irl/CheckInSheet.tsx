@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { KeyboardFrame } from '@/components/ui/KeyboardFrame';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, fonts, radii, spacing } from '@/lib/constants';
 import { Icon } from '@/components/ui';
@@ -30,9 +31,9 @@ export function CheckInSheet({ open, venues, initialVenue, busy, error, onClose,
 
   return (
     <Modal visible={open} transparent animationType="slide" onRequestClose={() => { if (!busy) onClose(); }}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, justifyContent: 'flex-end' }}>
+      <KeyboardFrame accessibilityViewIsModal style={{ flex: 1, justifyContent: 'flex-end' }}>
         <Pressable accessibilityLabel="Close check-in" disabled={busy} onPress={onClose} style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(45,36,27,0.35)' }} />
-        <View accessibilityViewIsModal style={{ maxHeight: '88%', backgroundColor: colors.cream, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl, paddingTop: spacing.lg, paddingBottom: Math.max(insets.bottom, spacing.lg) }}>
+        <View style={{ maxHeight: '88%', backgroundColor: colors.cream, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl, paddingTop: spacing.lg, paddingBottom: Math.max(insets.bottom, spacing.lg) }}>
           <View style={{ paddingHorizontal: spacing.lg, flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
             <Text accessibilityRole="header" style={{ flex: 1, fontFamily: fonts.serif, fontSize: 30, color: colors.dark }}>where’s the fun?</Text>
             <Pressable accessibilityRole="button" accessibilityLabel="Close check-in" disabled={busy} onPress={onClose} style={{ minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }}>
@@ -50,7 +51,7 @@ export function CheckInSheet({ open, venues, initialVenue, busy, error, onClose,
             autoCorrect={false}
             style={{ margin: spacing.lg, marginBottom: spacing.sm, padding: spacing.md, borderRadius: radii.md, backgroundColor: colors.surface, borderColor: colors.rule, borderWidth: 1, fontFamily: fonts.sans, fontSize: 14, color: colors.dark }}
           />
-          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.sm }}>
+          <ScrollView keyboardDismissMode="on-drag" keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.sm }}>
             {matches.map((venue) => {
               const checked = selected?.id === venue.id;
               return (
@@ -77,7 +78,7 @@ export function CheckInSheet({ open, venues, initialVenue, busy, error, onClose,
             <Text style={{ textAlign: 'center', paddingTop: spacing.sm, fontFamily: fonts.sans, fontSize: 11, lineHeight: 16, color: colors.brownMid }}>One visit. Your automatic sharing settings stay the same.</Text>
           </View>
         </View>
-      </KeyboardAvoidingView>
+      </KeyboardFrame>
     </Modal>
   );
 }
