@@ -22,6 +22,8 @@ name: Shared plan survives sign-in and onboarding
 - pressKey: Enter
 - tapOn: '8-digit code'
 - inputText: '12345678'
+- tapOn: 'Done typing'
+- assertVisible: 'finish signing in.*'
 - tapOn: 'finish signing in.*'
 - assertVisible: 'Today: come picnic'
 - takeScreenshot: plan-return-after-sign-in
