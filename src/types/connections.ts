@@ -33,6 +33,7 @@ export type ConnectionInvite = {
   use_count: number;
   revoked_at: Timestamp | null;
   created_at: Timestamp;
+  plan_id?: UUID | null;
 };
 
 export type ParentPreview = {
@@ -61,6 +62,8 @@ export type ConnectionInvitePreview = {
   code?: string;
   expires_at?: Timestamp;
   inviter?: ParentPreview;
+  needs_profile?: boolean;
+  plan?: { id: UUID; can_view: boolean } | null;
 };
 
 export type ContactExchange = {

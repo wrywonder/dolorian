@@ -1,11 +1,13 @@
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, Text, View } from 'react-native';
-import { router } from 'expo-router';
+import { useCallback, useRef, useState } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
+import { router, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AvatarCircle, Icon, TerracottaButton } from '@/components/ui';
-import { colors, fonts, radii, type AvatarTone } from '@/lib/constants';
+import { colors, fonts, spacing, type AvatarTone } from '@/lib/constants';
 import { data } from '@/lib/data';
 import { readableError } from '@/lib/error-message';
+import { inviteNextStep } from '@/lib/invite-links';
+import { createLatestRequest } from '@/lib/latest-request';
 import type { ConnectionInvitePreview } from '@/types';
 
 export function InviteAcceptanceScreen({ reference, signedIn }: { reference: string; signedIn: boolean }) {
@@ -13,103 +15,119 @@ export function InviteAcceptanceScreen({ reference, signedIn }: { reference: str
   const [loading, setLoading] = useState(true);
   const [accepting, setAccepting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [requests] = useState(createLatestRequest);
+  const pending = useRef(false);
 
-  useEffect(() => {
-    let active = true;
-    data.previewConnectionInvite(reference)
-      .then((result) => { if (active) setPreview(result); })
-      .catch((cause) => { if (active) setError(readableError(cause, 'Could not open this invite.')); })
-      .finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
-  }, [reference]);
+  const load = useCallback(async () => {
+    if (pending.current) return;
+    const isCurrent = requests.begin();
+    setLoading(true);
+    setAccepting(false);
+    setPreview(null);
+    setError(null);
+    try {
+      const result = await data.previewConnectionInvite(reference);
+      if (!isCurrent()) return;
+      setPreview(result);
+      if (inviteNextStep(result, signedIn) === 'view-plan' && result.plan) {
+        router.replace(`/plan/${result.plan.id}`);
+      }
+    } catch (cause) {
+      if (isCurrent()) setError(readableError(cause, 'Could not open this invite. Please try again.'));
+    } finally {
+      if (isCurrent()) setLoading(false);
+    }
+  }, [reference, requests, signedIn]);
+  useFocusEffect(useCallback(() => {
+    void load();
+    return () => { requests.invalidate(); pending.current = false; };
+  }, [load, requests]));
 
   const accept = async () => {
-    if (!preview?.inviter) return;
+    if (!preview?.inviter || pending.current) return;
+    pending.current = true;
+    const isCurrent = requests.begin();
     setAccepting(true);
     setError(null);
     try {
       await data.redeemConnectionInvite(reference);
-      router.replace(`/profile/${preview.inviter.id}`);
+      if (!isCurrent()) return;
+      router.replace(preview.plan ? `/plan/${preview.plan.id}` : `/profile/${preview.inviter.id}`);
     } catch (cause) {
-      setError(readableError(cause, 'Could not accept this invitation.'));
+      if (isCurrent()) setError(readableError(cause, 'Could not accept this invitation. Please try again.'));
     } finally {
-      setAccepting(false);
+      if (isCurrent()) { pending.current = false; setAccepting(false); }
     }
   };
 
-  const openInviterProfile = () => {
-    if (preview?.inviter) router.replace(`/profile/${preview.inviter.id}`);
+  const step = inviteNextStep(preview, signedIn);
+  const firstName = preview?.inviter?.display_name.split(' ')[0] ?? 'your friend';
+  const isPlan = Boolean(preview?.plan);
+  const title = isPlan ? `${firstName} shared a plan with you`
+    : step === 'own-invite' ? 'this is your Village link'
+      : step === 'view-profile' ? `you’re already connected with ${firstName}`
+        : `${firstName} invited you into their village`;
+  const actionLabel = accepting ? 'connecting…'
+    : step === 'sign-in' ? (isPlan ? 'sign in to see the plan →' : 'sign in to accept →')
+      : step === 'onboard' ? 'finish your profile →'
+        : step === 'view-plan' ? 'view plan →'
+          : step === 'own-invite' ? 'share this invite →'
+            : step === 'view-profile' ? 'view their profile →'
+              : isPlan ? (preview?.already_connected ? 'accept & view plan →' : 'connect & view plan →')
+                : `connect with ${firstName} →`;
+  const act = () => {
+    if (step === 'sign-in' || step === 'onboard') {
+      router.push({ pathname: step === 'sign-in' ? '/(auth)/sign-in' : '/(auth)/onboard', params: { invite: reference } });
+    } else if (step === 'view-plan' && preview?.plan) router.replace(`/plan/${preview.plan.id}`);
+    else if (step === 'own-invite') router.replace('/add-to-village');
+    else if (step === 'view-profile' && preview?.inviter) router.replace(`/profile/${preview.inviter.id}`);
+    else if (step === 'accept') void accept();
   };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.cream }} edges={['top', 'bottom']}>
-      <View style={{ padding: 16 }}>
-        <Pressable onPress={() => router.canGoBack() ? router.back() : router.replace('/')} hitSlop={10} style={styles.iconButton}>
+      <View style={{ padding: spacing.lg }}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Back" onPress={() => router.canGoBack() ? router.back() : router.replace('/')} hitSlop={10} style={styles.iconButton}>
           <View style={{ transform: [{ rotate: '180deg' }] }}><Icon name="chevron.right" size={19} color={colors.dark} /></View>
         </Pressable>
       </View>
-      <View style={{ flex: 1, paddingHorizontal: 28, justifyContent: 'center', alignItems: 'center' }}>
-        {loading ? <ActivityIndicator color={colors.terracotta} /> : preview?.found && preview.inviter ? (
-          <View style={{ width: '100%', alignItems: 'center', gap: 16 }}>
-            <View style={{ padding: 7, borderRadius: 60, backgroundColor: colors.surface }}>
-              <AvatarCircle
-                initials={preview.inviter.avatar_initials}
-                tone={preview.inviter.avatar_color as AvatarTone}
-                imageUrl={preview.inviter.avatar_url}
-                size={94}
-              />
-            </View>
-            <Text style={styles.eyebrow}>{preview.is_self ? 'YOUR PRIVATE INVITATION' : 'A PRIVATE INVITATION'}</Text>
-            <Text style={{ fontFamily: fonts.serifRegular, fontSize: 38, lineHeight: 41, color: colors.dark, textAlign: 'center' }}>
-              {preview.is_self
-                ? 'this is your Village link'
-                : preview.already_connected
-                  ? `you’re already connected with ${preview.inviter.display_name.split(' ')[0]}`
-                  : `${preview.inviter.display_name.split(' ')[0]} invited you into their village`}
+      <ScrollView contentContainerStyle={styles.content}>
+        {loading ? <ActivityIndicator color={colors.terracotta} /> : step !== 'unavailable' && preview?.inviter ? (
+          <View style={styles.invitation}>
+            <AvatarCircle initials={preview.inviter.avatar_initials} tone={preview.inviter.avatar_color as AvatarTone} imageUrl={preview.inviter.avatar_url} size={94} />
+            <Text style={styles.eyebrow}>{isPlan ? 'LET’S GET TOGETHER' : 'A PRIVATE INVITATION'}</Text>
+            <Text style={styles.title}>{title}</Text>
+            <Text style={styles.help}>
+              {isPlan
+                ? preview.already_connected
+                  ? 'Accept this invitation to see the details and let them know if you can make it.'
+                  : `Connect with ${firstName} to see the details and let them know if you can make it. You’ll also see each other’s plans and posts shared with connections.`
+                : step === 'own-invite'
+                  ? 'Share this link with parents you already know. You can revoke it whenever you want.'
+                  : 'Connections are mutual, private, and always under your control.'}
             </Text>
-            <Text style={{ fontFamily: fonts.sans, fontSize: 14, lineHeight: 21, color: colors.brownMid, textAlign: 'center' }}>
-              {preview.is_self
-                ? 'Share this link with parents you already know. You can revoke it whenever you want.'
-                : `${preview.inviter.neighborhood ? `${preview.inviter.neighborhood} · ` : ''}Connections are mutual, private, and always under your control.`}
-            </Text>
-            {preview.is_self ? (
-              <TerracottaButton label="share this invite →" onPress={() => router.replace('/add-to-village')} fullWidth style={{ marginTop: 8 }} />
-            ) : preview.already_connected ? (
-              <TerracottaButton label="view their profile →" onPress={openInviterProfile} fullWidth style={{ marginTop: 8 }} />
-            ) : !preview.active ? (
-              <Text selectable style={styles.error}>This invite has expired or reached its limit.</Text>
-            ) : signedIn ? (
-              <TerracottaButton
-                label={accepting ? 'connecting…' : `connect with ${preview.inviter.display_name.split(' ')[0]} →`}
-                onPress={accept}
-                disabled={accepting}
-                fullWidth
-                style={{ marginTop: 8 }}
-              />
-            ) : (
-              <TerracottaButton
-                label="sign in to accept →"
-                onPress={() => router.push({ pathname: '/(auth)/sign-in', params: { invite: reference } } as never)}
-                fullWidth
-                style={{ marginTop: 8 }}
-              />
-            )}
-            {error ? <Text selectable style={styles.error}>{error}</Text> : null}
+            {step === 'expired' ? <Text style={styles.error}>This invitation is no longer active. Ask {firstName} for a fresh link.</Text> : <TerracottaButton label={actionLabel} onPress={act} disabled={accepting} fullWidth style={{ marginTop: spacing.sm }} />}
+            {error ? <View style={styles.invitation}><Text selectable accessibilityRole="alert" style={styles.error}>{error}</Text><TerracottaButton label="check invitation again" onPress={load} disabled={accepting} fullWidth /></View> : null}
           </View>
         ) : (
-          <View style={{ alignItems: 'center', gap: 12 }}>
+          <View style={styles.invitation}>
             <Icon name="shield" size={40} color={colors.taupe} />
-            <Text style={{ fontFamily: fonts.serifRegular, fontSize: 28, color: colors.dark }}>invite not found</Text>
-            <Text selectable style={styles.error}>{error ?? 'Ask the sender for a fresh private invite.'}</Text>
+            <Text style={styles.title}>{error ? 'let’s try that again' : 'invitation unavailable'}</Text>
+            <Text selectable accessibilityRole={error ? 'alert' : undefined} style={styles.help}>{error ?? 'This link may have been removed. Ask the sender for a fresh invitation.'}</Text>
+            <TerracottaButton label="try again" onPress={load} fullWidth />
           </View>
         )}
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = {
-  iconButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.rule, alignItems: 'center', justifyContent: 'center' } as const,
+  content: { flexGrow: 1, padding: spacing.xl, paddingBottom: spacing.xxl, justifyContent: 'center', alignItems: 'center' } as const,
+  invitation: { width: '100%', alignItems: 'center', gap: spacing.lg } as const,
+  iconButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.rule, alignItems: 'center', justifyContent: 'center' } as const,
   eyebrow: { fontFamily: fonts.monoBold, fontSize: 9.5, letterSpacing: 0.8, color: colors.taupe } as const,
+  title: { fontFamily: fonts.serifRegular, fontSize: 38, lineHeight: 41, color: colors.dark, textAlign: 'center' } as const,
+  help: { fontFamily: fonts.sans, fontSize: 14, lineHeight: 21, color: colors.brownMid, textAlign: 'center' } as const,
   error: { fontFamily: fonts.sansSemi, fontSize: 12.5, lineHeight: 18, color: colors.terracotta, textAlign: 'center' } as const,
 };

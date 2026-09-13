@@ -1,0 +1,53 @@
+appId: com.dolorian.app
+name: Shared plan survives sign-in and onboarding
+# Run after plans-sharing.yaml. Only local fictional account/profile data.
+---
+- openLink: 'dolorian://settings'
+- scrollUntilVisible:
+    element:
+      text: '^sign out$'
+    direction: DOWN
+    centerElement: true
+- tapOn: '^sign out$'
+- tapOn: '(?-i)^Sign out$'
+- assertVisible: 'you@example.com'
+
+# Signed-out readers keep the plan destination across email OTP.
+- openLink: 'dolorian://join/99000000-0000-4000-8000-000000000910?plan=1'
+- assertVisible: 'Jamie shared a plan with you'
+- assertNotVisible: 'Today: come picnic'
+- tapOn: 'sign in to see the plan.*'
+- tapOn: 'you@example.com'
+- inputText: 'parent@example.test'
+- pressKey: Enter
+- tapOn: '8-digit code'
+- inputText: '12345678'
+- tapOn: 'finish signing in.*'
+- assertVisible: 'Today: come picnic'
+- takeScreenshot: plan-return-after-sign-in
+
+# Simulate an authenticated account that still needs its first parent profile.
+- evalScript: |
+    ${http.post('http://127.0.0.1:54329/__qa/control', {body: JSON.stringify({needsProfile:true}), headers:{'Content-Type':'application/json'}})}
+- openLink: 'dolorian://join/99000000-0000-4000-8000-000000000910?plan=1'
+- assertVisible: 'finish your profile.*'
+- tapOn: 'finish your profile.*'
+- assertVisible: 'YOUR NAME'
+- tapOn: 'Done typing'
+- assertVisible: 'e.g. Noe Valley'
+- tapOn: 'e.g. Noe Valley'
+- inputText: 'Test neighborhood'
+- runFlow:
+    when:
+      visible: 'Done typing'
+    commands:
+      - tapOn: 'Done typing'
+- assertVisible: 'join the village.*'
+- tapOn:
+    text: 'join the village.*'
+    retryTapIfNoChange: true
+- assertVisible: 'Today: come picnic'
+- takeScreenshot: plan-return-after-onboarding
+- evalScript: |
+    ${output.state = JSON.parse(http.get('http://127.0.0.1:54329/__qa/state').body)}
+- assertTrue: ${output.state.mutations.some(m => m.name === 'complete_onboarding')}

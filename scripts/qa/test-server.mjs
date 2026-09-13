@@ -34,6 +34,26 @@ try {
   assert.equal(auth.data.user.email, 'parent@example.test');
   accessToken = auth.data.access_token;
 
+  const ownerLink = await request('/rest/v1/rpc/get_or_create_plan_invite', { p_plan: id(303) });
+  assert.equal(ownerLink.status, 200);
+  assert.equal(ownerLink.data.plan_id, id(303));
+  assert.equal((await request('/rest/v1/rpc/get_or_create_plan_invite', { p_plan: id(303) })).data.token, ownerLink.data.token);
+  const connectedLink = await request('/rest/v1/rpc/preview_connection_invite', { p_reference: id(910) });
+  assert.equal(connectedLink.data.plan.can_view, true);
+  const newLink = await request('/rest/v1/rpc/preview_connection_invite', { p_reference: id(911) });
+  assert.equal(newLink.data.already_connected, false);
+  assert.equal(newLink.data.plan.can_view, false);
+  assert.equal((await request('/rest/v1/rpc/redeem_connection_invite', { p_reference: id(911) })).status, 200);
+  assert.equal((await request('/rest/v1/rpc/preview_connection_invite', { p_reference: id(911) })).data.plan.can_view, true);
+  assert.equal((await request('/rest/v1/rpc/preview_connection_invite', { p_reference: id(912) })).data.plan.can_view, false);
+  await request('/rest/v1/rpc/redeem_connection_invite', { p_reference: id(912) });
+  assert.equal((await request('/rest/v1/rpc/preview_connection_invite', { p_reference: id(912) })).data.plan.can_view, true);
+  await request('/__qa/control', { needsProfile: true });
+  assert.equal((await request('/rest/v1/rpc/preview_connection_invite', { p_reference: id(910) })).data.needs_profile, true);
+  assert.equal((await request('/rest/v1/rpc/preview_connection_invite', { p_reference: id(910) })).data.plan.can_view, false);
+  await request('/rest/v1/rpc/complete_onboarding', { p_display_name: 'Alex Rivera', p_neighborhood: 'Test City' });
+  assert.equal((await request('/rest/v1/rpc/preview_connection_invite', { p_reference: id(910) })).data.plan.can_view, true);
+
   const camp = await request('/functions/v1/plan-link-preview', { url: 'https://example.test/summer-camp?utm_source=qa' });
   assert.equal(camp.status, 200);
   assert.equal(camp.data.startTime, '09:00');

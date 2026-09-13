@@ -87,6 +87,10 @@ export function AddToVillageScreen() {
     try {
       const reference = code.trim();
       const preview = await data.previewConnectionInvite(reference);
+      if (preview.plan) {
+        router.push(`/join/${encodeURIComponent(reference)}`);
+        return;
+      }
       if (!preview.found || !preview.active || !preview.inviter) {
         throw new Error('That invite is invalid or expired.');
       }

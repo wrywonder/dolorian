@@ -188,3 +188,26 @@ touch a running native fixture server on 54329. Set `VILLAGE_QA_TEST_PORT` to us
 another free local port. These checks establish the fixture's behavior, while
 Node schedule tests and the separate SQL harness verify application logic and
 database authorization. They do not verify hosted Supabase or Google services.
+
+## Plan sharing links
+
+With a fresh fixture server and signed-in native dev client, run
+`plans-sharing.yaml` followed by `plans-sharing-auth.yaml`. The first checks the
+creator's native share sheet, cancellation, share failure/retry, direct opening
+for connected people, consent for a new friend, a specific private invitation,
+expired/missing links and preview failure/retry. The second signs the fictional
+account out, follows a link through email OTP, and finishes an incomplete profile
+before returning to its plan. Use the exact **Done typing** accessibility label;
+scroll form fields into view before selecting them.
+
+Incoming fixture tokens end in `910` (connected picnic), `911` (Taylor's garden
+hangout, initially not connected), `912` (private birthday invitation) and `913`
+(expired birthday link). All are `99000000-0000-4000-8000-000000000NNN`. The
+server's `needsProfile` control exercises incomplete onboarding. These are explicit
+HTTP fixtures, not hosted Supabase authorization; run `plan_share_links.test.sql`
+for the real RLS/transaction checks.
+
+A cold development client may display its launcher instead of handling an app
+route. Open `dolorian://expo-development-client/?url=http%3A%2F%2F127.0.0.1%3A8082`
+first, then the test flow in the same Maestro run. Terminate/reopen the app after
+source changes when using `--no-dev`. Native beta builds do not have this launcher.

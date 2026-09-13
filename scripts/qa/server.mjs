@@ -22,7 +22,7 @@ const parent = (n, name, tone) => ({
   profile_background: 'peach', profile_background_url: null, visibility_mode: 'disabled',
   calendar_connected_at: null, calendar_provider: null, created_at: date(-30),
 });
-const parents = [parent(1, 'Alex Rivera', 'peach'), parent(2, 'Jamie Chen', 'sage'), parent(3, 'Sam Patel', 'golden')];
+const parents = [parent(1, 'Alex Rivera', 'peach'), parent(2, 'Jamie Chen', 'sage'), parent(3, 'Sam Patel', 'golden'), parent(4, 'Taylor Brooks', 'sage')];
 const venue = (n, name, emoji, lat, lng) => ({
   id: id(n), name, emoji, lat, lng, geofence_radius_m: 150,
   venue_type: 'park', default_hangout: true, image_url: null, image_source: null,
@@ -45,6 +45,8 @@ const tables = {
     plan(301, 'Today: come picnic', 0, { all_day: true, starts_at: date(0), ends_at: null, emoji: '🧺' }),
     plan(302, 'Art club with friends', 1, { external_url: 'https://example.test/art-club', external_source_key: 'url:https://example.test/art-club/', plan_kind: 'signup', emoji: '🎨' }),
     plan(303, 'Camping under the stars', 3, { all_day: true, starts_at: date(3), ends_at: date(5), emoji: '⛺', created_by: parents[0].id }),
+    plan(306, 'Garden hangout', 2, { created_by: id(4) }),
+    plan(307, 'Private birthday picnic', 3, { visibility: 'invited' }),
     plan(304, 'Last weekend at the park', -3, { emoji: '🌳' }),
     plan(305, 'Raincheck playground morning', 2, { cancelled_at: now(), emoji: '☔' }),
   ],
@@ -54,6 +56,12 @@ const tables = {
   ],
   parent_locations: [
     { id: id(501), parent_id: id(2), venue_id: id(201), visible: true, auto_share_at: null, last_seen_at: now(), expires_at: new Date(Date.now() + 90 * 60_000).toISOString() },
+  ],
+  connection_invites: [
+    { id: id(910), token: id(910), plan_id: id(301), inviter_id: id(2), active: true },
+    { id: id(911), token: id(911), plan_id: id(306), inviter_id: id(4), active: true },
+    { id: id(912), token: id(912), plan_id: id(307), inviter_id: id(2), active: true },
+    { id: id(913), token: id(913), plan_id: id(307), inviter_id: id(2), active: false },
   ],
   parent_hangout_spots: [],
   connections: [2, 3].map((n) => ({ id: id(600 + n), parent_a: id(1), parent_b: id(n), status: 'connected', initiated_by: id(1), created_at: date(-20), responded_at: date(-20) })),
@@ -72,6 +80,7 @@ const tables = {
 };
 const failures = new Set();
 let failAfterMutation = null;
+let needsProfile = false;
 const mutations = [];
 const uploads = new Map();
 function recordMutation(name, method, body) {
@@ -132,7 +141,42 @@ function participants(planIds) {
     return { ...r, plan_id: r.activity_id, display_name: p.display_name, neighborhood: p.neighborhood, avatar_color: p.avatar_color, avatar_initials: p.avatar_initials, avatar_url: null, profile_visible: true };
   });
 }
-function rpc(name, body) {
+function rpc(name, body, signedIn) {
+  if (name === 'complete_onboarding') {
+    if (!signedIn || !body.p_display_name?.trim()) throw new Error('Invalid fixture profile');
+    needsProfile = false;
+    Object.assign(parents[0], { display_name: body.p_display_name.trim(), neighborhood: body.p_neighborhood });
+    return parents[0];
+  }
+  if (name === 'get_or_create_plan_invite') {
+    const p = tables.activities.find((p) => p.id === body.p_plan);
+    if (!signedIn || !p || p.created_by !== id(1) || p.cancelled_at) throw new Error('Plan not found');
+    let invite = tables.connection_invites.find((i) => i.plan_id === p.id && i.inviter_id === id(1) && i.active);
+    if (!invite) {
+      invite = { id: randomUUID(), token: randomUUID(), inviter_id: id(1), plan_id: p.id, active: true };
+      tables.connection_invites.push(invite);
+    }
+    return invite;
+  }
+  if (name === 'preview_connection_invite' || name === 'redeem_connection_invite') {
+    const invite = tables.connection_invites.find((i) => i.token === body.p_reference);
+    if (!invite) { if (name === 'preview_connection_invite') return { found: false }; throw new Error('Invite not found'); }
+    const p = tables.activities.find((p) => p.id === invite.plan_id);
+    let edge = tables.connections.find((c) => [c.parent_a, c.parent_b].includes(invite.inviter_id) && [c.parent_a, c.parent_b].includes(id(1)) && c.status === 'connected');
+    const isSelf = signedIn && invite.inviter_id === id(1);
+    if (name === 'preview_connection_invite') return {
+      found: true, active: invite.active, inviter: parents.find((p) => p.id === invite.inviter_id),
+      needs_profile: signedIn && needsProfile, is_self: isSelf, already_connected: signedIn && Boolean(edge),
+      plan: { id: p.id, can_view: signedIn && !needsProfile && (isSelf || (p.visibility === 'invited' ? tables.plan_invites.some((i) => i.plan_id === p.id && i.invited_parent_id === id(1)) : Boolean(edge))) },
+    };
+    if (!signedIn || needsProfile || !invite.active) throw new Error('This invite is no longer active');
+    if (!edge) {
+      edge = { id: randomUUID(), parent_a: id(1), parent_b: invite.inviter_id, status: 'connected', initiated_by: invite.inviter_id };
+      tables.connections.push(edge);
+    }
+    if (p.visibility === 'invited' && !tables.plan_invites.some((i) => i.plan_id === p.id && i.invited_parent_id === id(1))) tables.plan_invites.push({ plan_id: p.id, invited_parent_id: id(1), invited_by: invite.inviter_id });
+    return edge;
+  }
   if (name === 'plan_participants') return participants(body.p_plan_ids);
   if (name === 'plan_shared_by') return tables.activities.filter((p) => body.p_plan_ids.includes(p.id)).flatMap((p) => {
     const sharer = parents.find((person) => person.id === p.created_by);
@@ -217,6 +261,7 @@ createServer(async (req, res) => {
       failures.clear();
       for (const failure of body.fail ?? []) failures.add(failure);
       failAfterMutation = body.failAfterMutation ?? null;
+      if ('needsProfile' in body) needsProfile = Boolean(body.needsProfile);
       return send(200, { failures: [...failures] });
     }
     if (url.pathname === '/__qa/state') return send(200, { tables, mutations, uploads: [...uploads].map(([key, file]) => ({ key, byteLength: file.bytes.length })) });
@@ -246,11 +291,12 @@ createServer(async (req, res) => {
       return send(200, { suggestions: String(body.query).toLowerCase().includes('maple') ? [{ id: 'qa-playground', name: 'Maple Playground', address: 'Maple Street, Test City' }] : [] });
     }
     if (url.pathname.startsWith('/rest/v1/rpc/')) {
-      const result = rpc(name, body);
-      if (!['plan_participants', 'plan_shared_by', 'mutual_friend_count', 'get_my_phone'].includes(name)) recordMutation(name, req.method, body);
+      const result = rpc(name, body, Boolean(req.headers.authorization?.endsWith('.local-qa')));
+      if (!['plan_participants', 'plan_shared_by', 'mutual_friend_count', 'get_my_phone', 'preview_connection_invite'].includes(name)) recordMutation(name, req.method, body);
       return send(200, result);
     }
     if (!url.pathname.startsWith('/rest/v1/') || !tables[name]) throw new Error(`Unsupported QA endpoint: ${req.method} ${url.pathname}`);
+    if (needsProfile && name === 'parents' && url.searchParams.has('auth_user_id')) return send(200, null);
     let rows = tables[name].filter((row) => matches(row, url.searchParams));
     if (req.method === 'POST') {
       const incoming = Array.isArray(body) ? body : [body];

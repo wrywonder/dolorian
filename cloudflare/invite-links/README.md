@@ -7,7 +7,9 @@ This Worker owns only the public invitation handoff and Apple association paths:
 
 Installed iOS builds open `/join/*` directly through Universal Links. Older
 TestFlight builds and browsers receive the handoff page, whose button uses the
-existing `dolorian://invite/*` fallback.
+existing `dolorian://invite/*` fallback. Plan shares use the same paths with
+`?plan=1` for generic browser copy; the token binds the plan destination in the
+database. Never render private plan details into this public handoff.
 
 The Apple application identifier is `756X7G9F7X.com.dolorian.app`. If the Apple
 Developer team or bundle identifier changes, update both the Worker and

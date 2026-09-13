@@ -166,6 +166,14 @@ unconfigured Supabase client.
   checks plan visibility and blocks. Responses count parents, not households.
 - One response covers the whole plan. Notes can describe a child, team, week or
   exceptions; Village does not register anyone with an external organizer.
+- Plan share links reuse `/join/<token>` and bind `connection_invites.plan_id` on
+  the server. Only the creator can generate them. Authorized readers open the
+  plan; others explicitly connect and accept its invitation after sign-in/profile
+  setup. Never grant plan access from an editable URL parameter.
+- Accepting a creator's link to an invited-only plan adds only that plan invitation
+  atomically with the connection; it never RSVPs. Keep link revocation on audience
+  changes, cancellation and guest removal, and preserve existing RLS and blocks.
+  Deploy `20260913000000_plan_share_links.sql` before distributing this client.
 
 ## Conventions
 

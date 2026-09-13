@@ -1132,6 +1132,13 @@ async function getOrCreateConnectionInvite(): Promise<ConnectionInvite> {
   return data as ConnectionInvite;
 }
 
+async function getOrCreatePlanInvite(planId: UUID): Promise<ConnectionInvite> {
+  const { data, error } = await supabase.rpc('get_or_create_plan_invite', { p_plan: planId });
+  if (error) throw error;
+  if (!data?.token || data.plan_id !== planId) throw new Error('Could not prepare this plan’s link. Please try again.');
+  return data as ConnectionInvite;
+}
+
 async function revokeConnectionInvite(inviteId: UUID): Promise<void> {
   const { error } = await supabase.rpc('revoke_connection_invite', { invite_id: inviteId });
   if (error) throw error;
@@ -1325,6 +1332,7 @@ export const data = {
   getConnectionInvites,
   createConnectionInvite,
   getOrCreateConnectionInvite,
+  getOrCreatePlanInvite,
   revokeConnectionInvite,
   previewConnectionInvite,
   redeemConnectionInvite,

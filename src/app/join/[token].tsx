@@ -6,5 +6,5 @@ export default function JoinRoute() {
   const { token } = useLocalSearchParams<{ token: string }>();
   const { session } = useSession();
   if (!token) return null;
-  return <InviteAcceptanceScreen reference={token} signedIn={Boolean(session)} />;
+  return <InviteAcceptanceScreen key={`${token}:${session?.user.id ?? 'signed-out'}`} reference={token} signedIn={Boolean(session)} />;
 }

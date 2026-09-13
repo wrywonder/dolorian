@@ -340,6 +340,7 @@ export function VillageScreen() {
                     <View key={invite.id} style={styles.inviteRow}>
                       <View style={{ flex: 1 }}>
                         <Text selectable style={{ fontFamily: fonts.monoBold, fontSize: 16, letterSpacing: 1.2, color: colors.dark }}>{invite.code}</Text>
+                        {invite.plan_id ? <Pressable accessibilityRole="button" onPress={() => router.push(`/plan/${invite.plan_id}`)} style={{ minHeight: 44, justifyContent: 'center' }}><Text style={styles.secondaryText}>Plan invitation · view plan →</Text></Pressable> : null}
                         <Text style={styles.secondaryText}>{invite.use_count} of {invite.max_uses} joined · expires {shortDate(invite.expires_at)}</Text>
                       </View>
                       <SmallButton label="revoke" loading={busyId === `revoke-${invite.id}`} onPress={() => run(`revoke-${invite.id}`, () => data.revokeConnectionInvite(invite.id))} />

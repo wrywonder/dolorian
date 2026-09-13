@@ -1,0 +1,84 @@
+appId: com.dolorian.app
+name: Share a plan and open private invitations
+# Uses only scripts/qa/server.mjs fixtures; start it fresh, signed in locally.
+---
+- openLink: "dolorian://plan/99000000-0000-4000-8000-000000000303"
+- runFlow:
+    when:
+      visible: "^Open$"
+    commands:
+      - tapOn: "^Open$"
+- assertVisible: "Camping under the stars"
+- assertVisible: "Share plan"
+- takeScreenshot: plan-share-control
+- evalScript: |
+    ${http.post('http://127.0.0.1:54329/__qa/control', {body: JSON.stringify({fail:['get_or_create_plan_invite']}), headers:{'Content-Type':'application/json'}})}
+- tapOn: "Share plan"
+- assertVisible: "The local test server is simulating an unavailable connection."
+- assertVisible: "Camping under the stars"
+- evalScript: |
+    ${http.post('http://127.0.0.1:54329/__qa/control', {body: JSON.stringify({fail:[]}), headers:{'Content-Type':'application/json'}})}
+- tapOn: "Share plan"
+- assertVisible: "Copy"
+- takeScreenshot: plan-native-share-sheet
+- tapOn:
+    point: "50%,30%"
+- assertVisible: "Share plan"
+- evalScript: |
+    ${output.state = JSON.parse(http.get('http://127.0.0.1:54329/__qa/state').body)}
+- assertTrue: ${output.state.tables.connection_invites.filter(i => i.plan_id === '99000000-0000-4000-8000-000000000303').length === 1}
+
+# Connected recipient: direct navigation, no acceptance write.
+- openLink: "dolorian://join/99000000-0000-4000-8000-000000000910?plan=1"
+- assertVisible: "Today: come picnic"
+- assertNotVisible: "connect & view plan.*"
+- takeScreenshot: plan-linked-connection
+
+# New friend: no private plan details before consent; failure then retry.
+- openLink: "dolorian://join/99000000-0000-4000-8000-000000000911?plan=1"
+- assertVisible: "Taylor shared a plan with you"
+- assertNotVisible: "Garden hangout"
+- takeScreenshot: plan-connect-invitation
+- evalScript: |
+    ${http.post('http://127.0.0.1:54329/__qa/control', {body: JSON.stringify({fail:['redeem_connection_invite']}), headers:{'Content-Type':'application/json'}})}
+- tapOn: "connect & view plan.*"
+- assertVisible: "The local test server is simulating an unavailable connection."
+- evalScript: |
+    ${http.post('http://127.0.0.1:54329/__qa/control', {body: JSON.stringify({fail:[]}), headers:{'Content-Type':'application/json'}})}
+- tapOn: "connect & view plan.*"
+- assertVisible: "Garden hangout"
+- evalScript: |
+    ${output.state = JSON.parse(http.get('http://127.0.0.1:54329/__qa/state').body)}
+- assertTrue: ${output.state.tables.connections.some(c => c.parent_b === '99000000-0000-4000-8000-000000000004' && c.status === 'connected')}
+
+# An expired link cannot invite a new guest.
+- openLink: "dolorian://join/99000000-0000-4000-8000-000000000913?plan=1"
+- assertVisible: "This invitation is no longer active.*"
+- assertNotVisible: "accept & view plan.*"
+- takeScreenshot: plan-expired-invitation
+
+# Existing connection accepts an invitation to this specific private plan.
+- openLink: "dolorian://invite/99000000-0000-4000-8000-000000000912?plan=1"
+- assertVisible: "Jamie shared a plan with you"
+- assertNotVisible: "Private birthday picnic"
+- tapOn: "accept & view plan.*"
+- assertVisible: "Private birthday picnic"
+- evalScript: |
+    ${output.state = JSON.parse(http.get('http://127.0.0.1:54329/__qa/state').body)}
+- assertTrue: ${output.state.tables.plan_invites.some(i => i.plan_id === '99000000-0000-4000-8000-000000000307' && i.invited_parent_id === '99000000-0000-4000-8000-000000000001')}
+- takeScreenshot: plan-invited-accepted
+
+# Missing link and network recovery stay honest and usable.
+- openLink: "dolorian://join/missing-token?plan=1"
+- assertVisible: "invitation unavailable"
+- assertNotVisible: "connect & view plan.*"
+- evalScript: |
+    ${http.post('http://127.0.0.1:54329/__qa/control', {body: JSON.stringify({fail:['preview_connection_invite']}), headers:{'Content-Type':'application/json'}})}
+- openLink: "dolorian://join/99000000-0000-4000-8000-000000000910?plan=1"
+- assertVisible: "let.s try that again"
+- evalScript: |
+    ${http.post('http://127.0.0.1:54329/__qa/control', {body: JSON.stringify({fail:[]}), headers:{'Content-Type':'application/json'}})}
+- tapOn:
+    text: "^try again$"
+    retryTapIfNoChange: true
+- assertVisible: "Today: come picnic"

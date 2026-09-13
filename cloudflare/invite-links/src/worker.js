@@ -37,21 +37,25 @@ function escapeHtml(value) {
   })[character]);
 }
 
-function invitationPage(reference, requestUrl) {
+function invitationPage(reference, isPlan) {
   const encodedReference = encodeURIComponent(reference);
-  const appUrl = `dolorian://invite/${encodedReference}`;
-  const canonicalUrl = `https://withvillage.app/join/${encodedReference}`;
+  const suffix = isPlan ? '?plan=1' : '';
+  const appUrl = `dolorian://invite/${encodedReference}${suffix}`;
+  const canonicalUrl = `https://withvillage.app/join/${encodedReference}${suffix}`;
   const safeCanonicalUrl = escapeHtml(canonicalUrl);
-  const safeRequestUrl = escapeHtml(requestUrl);
+
+  const title = isPlan ? 'A friend shared a plan in Village' : 'A private invitation to Village';
+  const heading = isPlan ? 'let’s get together' : 'come join me in Village';
+  const intro = isPlan ? 'Open the plan in Village. If you’re not connected yet, you can connect with your friend and then see the details.' : 'A parent you know invited you to connect in Village, the private place for your people and your plans.';
 
   return new Response(`<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <title>A private invitation to Village</title>
-    <meta name="description" content="A parent you know invited you to connect privately in Village.">
-    <meta property="og:title" content="Come join me in Village">
+    <title>${title}</title>
+    <meta name="description" content="${intro}">
+    <meta property="og:title" content="${title}">
     <meta property="og:description" content="A private invitation from a parent you know.">
     <meta property="og:type" content="website">
     <meta property="og:url" content="${safeCanonicalUrl}">
@@ -76,14 +80,14 @@ function invitationPage(reference, requestUrl) {
     <main>
       <div class="mark">V</div>
       <p class="eyebrow">A PRIVATE INVITATION</p>
-      <h1>come join me in Village</h1>
-      <p class="intro">A parent you know invited you to connect in Village, the private place for your people and your plans.</p>
+      <h1>${heading}</h1>
+      <p class="intro">${intro}</p>
       <section class="card">
         <a class="button" href="${escapeHtml(appUrl)}">open Village →</a>
         <p class="help">If Village is not installed yet, install the TestFlight beta from your invitation, then return to this message.</p>
       </section>
       <p class="privacy">Connections are mutual, private, and always under your control.</p>
-      <noscript><a href="${safeRequestUrl}">Reload invitation</a></noscript>
+      <noscript><a href="${safeCanonicalUrl}">Reload invitation</a></noscript>
     </main>
   </body>
 </html>`, {
@@ -113,6 +117,6 @@ export default {
     } catch {
       return new Response('Invitation not found', { status: 404, headers: securityHeaders });
     }
-    return invitationPage(reference, url.toString());
+    return invitationPage(reference, url.searchParams.get('plan') === '1');
   },
 };

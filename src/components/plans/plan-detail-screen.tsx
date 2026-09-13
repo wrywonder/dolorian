@@ -1,8 +1,10 @@
-import { useCallback, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Alert,
   Linking,
+  Keyboard,
+  Share,
   Pressable,
   RefreshControl,
   Text,
@@ -20,6 +22,7 @@ import { data } from '@/lib/data';
 import { createLatestRequest } from '@/lib/latest-request';
 import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
 import { readableError } from '@/lib/error-message';
+import { planInviteMessage, planInviteUrl } from '@/lib/invite-links';
 import { planIsUpcoming, planScheduleLabel } from '@/lib/plan-dates';
 import { getPlanKind } from '@/lib/plan-intent';
 import { planRsvpCopy } from '@/lib/plan-rsvp-copy';
@@ -41,6 +44,33 @@ export function PlanDetailScreen({ id }: PlanDetailScreenProps) {
   const [rsvpNote, setRsvpNote] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [showOut, setShowOut] = useState(false);
+  const [sharing, setSharing] = useState(false);
+  const sharePending = useRef(false);
+  const [shareRequests] = useState(createLatestRequest);
+  useEffect(() => () => shareRequests.invalidate(), [id, shareRequests]);
+
+  const sharePlan = async () => {
+    if (!proof || sharePending.current || saving) return;
+    sharePending.current = true;
+    const isCurrent = shareRequests.begin();
+    setSharing(true);
+    setError(null);
+    Keyboard.dismiss();
+    try {
+      const invite = await data.getOrCreatePlanInvite(id);
+      const me = await data.getCurrentParentId();
+      if (!isCurrent() || me !== invite.inviter_id) return;
+      await Share.share({
+        title: proof.activity.name,
+        message: planInviteMessage(proof.activity.name, planInviteUrl(invite.token)),
+      });
+    } catch (cause) {
+      if (isCurrent()) setError(readableError(cause, 'Could not open sharing. Tap share plan to try again.'));
+    } finally {
+      sharePending.current = false;
+      if (isCurrent()) setSharing(false);
+    }
+  };
 
   const load = useCallback(async () => {
     const isCurrent = requests.begin();
@@ -137,7 +167,7 @@ export function PlanDetailScreen({ id }: PlanDetailScreenProps) {
         <Text style={styles.emptyTitle}>plan unavailable</Text>
         <Text selectable style={styles.help}>{error}</Text>
         <TerracottaButton label="try again" onPress={() => { setLoading(true); void load(); }} />
-        <TerracottaButton label="go back" onPress={() => router.back()} />
+        <TerracottaButton label="go back" onPress={() => router.canGoBack() ? router.back() : router.replace('/plans')} />
       </SafeAreaView>
     );
   }
@@ -167,7 +197,7 @@ export function PlanDetailScreen({ id }: PlanDetailScreenProps) {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.cream }} edges={['top', 'bottom']}>
       <View style={styles.header}>
-        <RoundButton label="Back" onPress={() => router.back()}>
+          <RoundButton label="Back" onPress={() => router.canGoBack() ? router.back() : router.replace('/plans')}>
           <View style={{ transform: [{ rotate: '180deg' }] }}><Icon name="chevron.right" size={19} color={colors.dark} /></View>
         </RoundButton>
         <Text style={styles.headerTitle}>plan details</Text>
@@ -202,6 +232,13 @@ export function PlanDetailScreen({ id }: PlanDetailScreenProps) {
               <AvatarCircle initials={shared_by.avatar_initials} tone={shared_by.avatar_color} imageUrl={shared_by.avatar_url} size={30} />
               <Text style={styles.sharedByText}>Shared by {isOwner ? 'you' : shared_by.display_name}</Text>
             </Pressable> : null}
+            {isOwner && !activity.cancelled_at ? <View style={{ gap: spacing.sm }}>
+              <Pressable accessibilityRole="button" accessibilityLabel="Share plan" accessibilityState={{ disabled: sharing || saving, busy: sharing }} disabled={sharing || saving} onPress={sharePlan} style={[styles.shareButton, { opacity: sharing || saving ? 0.55 : 1 }]}>
+                {sharing ? <ActivityIndicator color={colors.terracotta} /> : <Icon name="paper.plane" size={18} color={colors.terracotta} />}
+                <Text style={styles.linkText}>{sharing ? 'opening sharing…' : 'share plan'}</Text>
+              </Pressable>
+              <Text style={styles.helpLeft}>{activity.visibility === 'invited' ? 'Anyone with this link can connect with you and join this private plan.' : 'Friends can open the plan, or connect with you to see it.'}</Text>
+            </View> : null}
           </View>
 
           <View style={styles.section}>
@@ -345,6 +382,7 @@ function toneForActivity(emoji: string | null): AvatarTone {
 }
 
 const styles = {
+  shareButton: { minHeight: 44, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, borderWidth: 1, borderColor: colors.rule, borderRadius: radii.pill, backgroundColor: colors.cream } as const,
   retryNotice: { marginHorizontal: 14, padding: 14, backgroundColor: colors.surface, borderRadius: radii.md, borderWidth: 1, borderColor: colors.rule } as const,
   retryButton: { minHeight: 40, justifyContent: 'center' } as const,
   center: { flex: 1, backgroundColor: colors.cream, padding: 28, alignItems: 'center', justifyContent: 'center', gap: 16 } as const,
