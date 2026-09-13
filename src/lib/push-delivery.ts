@@ -15,10 +15,11 @@ export type VillagePushType =
 export async function deliverVillagePush(
   recipientId: string,
   type: VillagePushType,
+  planId?: string,
 ): Promise<void> {
   await withPushDeliveryBudget(async (signal) => {
     const { error } = await supabase.functions.invoke('connection-push', {
-      body: { recipientId, type },
+      body: { recipientId, type, ...(planId ? { planId } : {}) },
       signal,
     });
     if (error) throw error;
@@ -28,9 +29,10 @@ export async function deliverVillagePush(
 export async function deliverVillagePushBestEffort(
   recipientId: string,
   type: VillagePushType,
+  planId?: string,
 ): Promise<void> {
   try {
-    await deliverVillagePush(recipientId, type);
+    await deliverVillagePush(recipientId, type, planId);
   } catch (cause) {
     console.warn('remote notification delivery failed', cause);
   }

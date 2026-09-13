@@ -106,6 +106,7 @@ export default function TabsLayout() {
       .select('id, title, body, url')
       .is('read_at', null)
       .is('push_sent_at', null)
+      .or(`push_claimed_at.is.null,push_claimed_at.lt.${new Date(Date.now() - 60_000).toISOString()}`)
       .lt('created_at', new Date(Date.now() - 5_000).toISOString())
       .order('created_at', { ascending: true })
       .limit(10);

@@ -14,7 +14,7 @@ import { KeyboardFrame } from '@/components/ui/KeyboardFrame';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AvatarCircle, Icon } from '@/components/ui';
-import { colors, fonts, radii, type AvatarTone } from '@/lib/constants';
+import { colors, fonts, radii, spacing, type AvatarTone } from '@/lib/constants';
 import { data } from '@/lib/data';
 import { readableError } from '@/lib/error-message';
 import type {
@@ -318,7 +318,7 @@ export function VillageScreen() {
                   <ToggleRow label="New connection requests" value={notifications.connection_requests} onValueChange={(value) => updateNotification('connection_requests', value)} />
                   <ToggleRow label="Accepted requests" value={notifications.connection_acceptances} onValueChange={(value) => updateNotification('connection_acceptances', value)} />
                   <ToggleRow label="Invite redemptions" value={notifications.invite_redemptions} onValueChange={(value) => updateNotification('invite_redemptions', value)} />
-                  <ToggleRow label="Plan invitations" value={notifications.plan_invitations} onValueChange={(value) => updateNotification('plan_invitations', value)} />
+                  <ToggleRow label="New plans & invitations" value={notifications.plan_invitations} onValueChange={(value) => updateNotification('plan_invitations', value)} />
                 </Section>
               </>
             ) : null}
@@ -425,7 +425,7 @@ function FilterChip({ label, selected, onPress }: { label: string; selected: boo
 }
 
 function ToggleRow({ label, value, onValueChange }: { label: string; value: boolean; onValueChange: (value: boolean) => void }) {
-  return <View style={styles.toggleRow}><Text style={styles.rowName}>{label}</Text><Switch value={value} onValueChange={onValueChange} trackColor={{ false: colors.rule, true: colors.sage }} /></View>;
+  return <View style={styles.toggleRow}><Text accessible={false} style={[styles.rowName, { flex: 1, marginRight: spacing.sm }]}>{label}</Text><Switch accessibilityLabel={label} value={value} onValueChange={onValueChange} trackColor={{ false: colors.rule, true: colors.sage }} /></View>;
 }
 
 function EmptyCopy({ text }: { text: string }) {

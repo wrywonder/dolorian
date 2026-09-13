@@ -142,6 +142,8 @@ function participants(planIds) {
   });
 }
 function rpc(name, body, signedIn) {
+  // This fixture has no blocked or suggested parents; SQL tests exercise their policies.
+  if (name === 'blocked_parents' || name === 'suggested_connections') return [];
   if (name === 'complete_onboarding') {
     if (!signedIn || !body.p_display_name?.trim()) throw new Error('Invalid fixture profile');
     needsProfile = false;
@@ -220,11 +222,15 @@ function rpc(name, body, signedIn) {
     for (const field of ['description', 'emoji', 'location_name', 'location_address', 'external_url', 'external_source_key', 'cover_image_url']) {
       if (field in values) values[field] = values[field]?.trim() || null;
     }
+    const previousInvitees = p ? tables.plan_invites.filter((i) => i.plan_id === p.id).map((i) => i.invited_parent_id) : [];
     if (!p) { p = plan(0, values.name, 1, { id: randomUUID(), created_by: id(1), venue_id: null }); tables.activities.push(p); }
     Object.assign(p, values, { updated_at: now() });
     tables.plan_invites = tables.plan_invites.filter((i) => i.plan_id !== p.id);
     for (const invited_parent_id of values.visibility === 'invited' ? invitees : []) tables.plan_invites.push({ plan_id: p.id, invited_parent_id });
-    return { plan: p, notified_parent_ids: [] };
+    const candidates = values.visibility === 'invited' ? invitees.filter((person) => !previousInvitees.includes(person))
+      : !editing && name === 'create_plan_v3' ? tables.connections.filter((c) => c.status === 'connected' && [c.parent_a, c.parent_b].includes(id(1))).map((c) => c.parent_a === id(1) ? c.parent_b : c.parent_a) : [];
+    const notified = candidates.filter((person) => tables.parent_notification_preferences.find((pref) => pref.parent_id === person)?.plan_invitations !== false);
+    return { plan: p, notified_parent_ids: notified };
   }
   throw new Error(`Unsupported QA RPC: ${name}`);
 }
@@ -283,6 +289,14 @@ createServer(async (req, res) => {
       try { return send(200, planLinkPreview(body.url)); }
       catch (error) { return send(422, { error: error.message }); }
     }
+    if (url.pathname === '/functions/v1/connection-push' && req.method === 'POST') {
+      if (!req.headers.authorization?.endsWith('.local-qa')) return send(401, { error: 'Local QA sign-in required' });
+      const target = tables.activities.find((p) => p.id === body.planId && p.created_by === id(1));
+      if (body.type !== 'plan_invite' || !target || !parents.some((p) => p.id === body.recipientId)) return send(400, { error: 'Unknown fixture notification' });
+      recordMutation('connection-push', req.method, body);
+      // Record the real app request, but never contact Expo or claim device delivery.
+      return send(200, { delivered: 0, qaOnly: true });
+    }
     if (url.pathname === '/functions/v1/place-search' && req.method === 'POST') {
       // Fictional provider contract: selection must resolve details before saving.
       if (!body.sessionToken) return send(400, { error: 'Missing search session' });
@@ -301,10 +315,12 @@ createServer(async (req, res) => {
     if (req.method === 'POST') {
       const incoming = Array.isArray(body) ? body : [body];
       rows = incoming.map((value) => {
-        const unique = url.searchParams.get('on_conflict')?.split(',') ?? ['id'];
+        const unique = url.searchParams.get('on_conflict')?.split(',') ?? (name === 'parent_notification_preferences' ? ['parent_id'] : ['id']);
         const existing = tables[name].find((row) => unique.every((key) => value[key] != null && row[key] === value[key]));
         if (existing) return Object.assign(existing, value);
-        const added = { id: randomUUID(), created_at: now(), ...value };
+        const defaults = name === 'parent_notification_preferences'
+          ? { connection_requests: true, connection_acceptances: true, invite_redemptions: true, plan_invitations: true } : {};
+        const added = { id: randomUUID(), created_at: now(), ...defaults, ...value };
         tables[name].push(added);
         return added;
       });

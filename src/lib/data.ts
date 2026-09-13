@@ -450,7 +450,7 @@ async function createPlan(input: PlanInput): Promise<Activity> {
   if (error) throw error;
   const payload = result as PlanMutationResult;
   await Promise.all((payload.notified_parent_ids ?? []).map((parentId) =>
-    deliverVillagePushBestEffort(parentId, 'plan_invite')));
+    deliverVillagePushBestEffort(parentId, 'plan_invite', payload.plan.id)));
   return payload.plan;
 }
 
@@ -462,7 +462,7 @@ async function updatePlan(planId: UUID, input: PlanInput): Promise<Activity> {
   if (error) throw error;
   const payload = result as PlanMutationResult;
   await Promise.all((payload.notified_parent_ids ?? []).map((parentId) =>
-    deliverVillagePushBestEffort(parentId, 'plan_invite')));
+    deliverVillagePushBestEffort(parentId, 'plan_invite', payload.plan.id)));
   return payload.plan;
 }
 

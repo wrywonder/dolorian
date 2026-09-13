@@ -175,6 +175,21 @@ unconfigured Supabase client.
   changes, cancellation and guest removal, and preserve existing RLS and blocks.
   Deploy `20260913000000_plan_share_links.sql` before distributing this client.
 
+## Plan notifications
+
+- `create_plan_v3` alerts eligible connections for new connections/public plans;
+  private plans alert only invitees. Ordinary edits do not rebroadcast.
+- The existing `plan_invitations` preference covers both new plans and invitations.
+  “Mute their posts” affects Buzz only. Keep those two meanings distinct.
+- Push requests include the exact plan ID. `connection-push` resolves the caller
+  and uses service-only `claim_connection_notification`; clients cannot supply
+  trusted push copy or claim another actor's notification.
+- Check current audience, blocks, cancellation and preferences before delivery.
+  Foreground fallback must respect `push_claimed_at` leases and notification RLS.
+- Deploy `20260913010000_plan_connection_notifications.sql` and `connection-push`
+  before releasing the notification client. Expo acceptance is not proof of
+  device receipt. See `docs/plan-notifications.md` for verification and limits.
+
 ## Conventions
 
 - **TypeScript is strict** (`noUncheckedIndexedAccess`, `noImplicitOverride`,

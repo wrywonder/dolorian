@@ -88,7 +88,11 @@ try {
   const planId = created.data.plan.id;
   assert.equal(created.data.plan.plan_kind, 'gathering');
   assert.equal(created.data.plan.starts_at, null);
-  assert.deepEqual(created.data.notified_parent_ids, []);
+  assert.deepEqual(created.data.notified_parent_ids, [id(2), id(3)]);
+  const push = await request('/functions/v1/connection-push', { recipientId: id(2), type: 'plan_invite', planId });
+  assert.equal(push.status, 200);
+  assert.equal(push.data.delivered, 0, 'The fixture records requests without sending remote pushes');
+  assert.equal(push.data.qaOnly, true);
   const invitees = await request(`/rest/v1/plan_invites?plan_id=eq.${planId}`);
   assert.deepEqual(invitees.data.map((row) => row.invited_parent_id).sort(), [id(2), id(3)]);
   const shared = await request('/rest/v1/rpc/plan_shared_by', { p_plan_ids: [planId] });

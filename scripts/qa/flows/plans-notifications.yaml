@@ -1,0 +1,43 @@
+appId: com.dolorian.app
+name: New plan notifications and preference persistence
+# Uses only the local HTTP fixture. Push requests are recorded, never sent.
+---
+- runFlow: reload-local.yaml
+- evalScript: ${output.planName = 'QA notification picnic ' + Date.now()}
+- openLink: 'dolorian://plan/new'
+- tapOn: 'Plan name.*'
+- inputText: ${output.planName}
+- tapOn: 'Done typing'
+- tapOn:
+    text: 'Share plan'
+    enabled: true
+- assertVisible: 'plan details'
+- evalScript: ${output.state = json(http.get('http://127.0.0.1:54329/__qa/state').body)}
+- evalScript: ${output.plan = output.state.tables.activities.filter(p => p.name === output.planName)[0]}
+- assertTrue: ${output.plan.visibility === 'connections'}
+- evalScript: ${output.pushes = output.state.mutations.filter(m => m.name === 'connection-push' && m.body.planId === output.plan.id)}
+- assertTrue: ${output.pushes.length === 2}
+- takeScreenshot: plan-created-with-alerts
+- tapOn: 'edit'
+- tapOn: 'Save changes'
+- assertVisible: 'plan details'
+- evalScript: ${output.afterEdit = json(http.get('http://127.0.0.1:54329/__qa/state').body)}
+- assertTrue: ${output.afterEdit.mutations.filter(m => m.name === 'connection-push' && m.body.planId === output.plan.id).length === 2}
+- openLink: 'dolorian://village?tab=requests'
+- scrollUntilVisible:
+    element: 'New plans & invitations.*'
+    direction: DOWN
+- assertNotVisible: 'Unsupported QA.*'
+- assertVisible: 'New plans & invitations.*'
+- tapOn: 'New plans & invitations.*'
+- evalScript: ${output.prefs = json(http.get('http://127.0.0.1:54329/__qa/state').body).tables.parent_notification_preferences}
+- assertTrue: ${output.prefs.length === 1 && output.prefs[0].plan_invitations === false}
+- openLink: 'dolorian://plans'
+- openLink: 'dolorian://village?tab=requests'
+- scrollUntilVisible:
+    element: 'New plans & invitations.*'
+    direction: DOWN
+- tapOn: 'New plans & invitations.*'
+- evalScript: ${output.prefs = json(http.get('http://127.0.0.1:54329/__qa/state').body).tables.parent_notification_preferences}
+- assertTrue: ${output.prefs.length === 1 && output.prefs[0].plan_invitations === true}
+- takeScreenshot: plan-notification-setting
