@@ -75,8 +75,9 @@ was included.
 
 ## Compatibility and verification limits
 
-- Both new privacy migrations are local and **not deployed**. Their server-side
-  protections take effect only after a separately authorized migration rollout.
+- Both new privacy migrations were local at the end of this pass. They were
+  subsequently deployed and verified in the authorized
+  [September 13 build 26 release](releases/2026-09-13-build-26.md).
 - Existing automatic-location registrations have no account owner. They are
   intentionally inactive until the user explicitly sets up automatic sharing
   once again. Manual check-ins do not require this setup.

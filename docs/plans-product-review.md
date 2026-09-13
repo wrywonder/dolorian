@@ -1,6 +1,6 @@
 # Plans: product spec and design
 
-Status: implemented locally. The implementation uses explicit gathering/signup intent, optional dates, bounded weekday repeats, a compact editor and response-first detail. [The concrete mobile designs](plans-design.html) show the hierarchy and visual language. Baseline findings below describe the pre-change repository; [delivery and verification notes](plans-improvement-pass.md) record the final results and release boundary. No production state was inspected or changed for this review.
+Status: implemented and [released in TestFlight build 26](releases/2026-09-13-build-26.md). The implementation uses explicit gathering/signup intent, optional dates, bounded weekday repeats, a compact editor and response-first detail. [The concrete mobile designs](plans-design.html) show the hierarchy and visual language. Baseline findings below describe the pre-change repository; [delivery and verification notes](plans-improvement-pass.md) record the final results and release boundary. The original product review was local; the later release was separately authorized.
 
 ## Product job
 

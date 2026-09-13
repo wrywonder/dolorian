@@ -128,11 +128,11 @@ Done bar, and the modal status-bar overlap—were fixed and retested.
 
 ## Release boundary and remaining work
 
-This is a local implementation. Production database state, tester emails and
-TestFlight distribution were not changed by this pass. The new client requires
-`20260912000000_plan_intent_and_schedules.sql` before distribution. Reconcile the
-hosted migration ledger before release: the earlier presence/RSVP privacy
-migrations also have local QA and must not be assumed deployed.
+The implementation pass was local. The subsequently authorized
+[September 13 release](releases/2026-09-13-build-26.md) deployed the Plans migration
+and the two earlier privacy migrations after reconciling the hosted ledger, then
+distributed build 1.0.0 (26) to DCK Club. The release record includes the exact
+source commit, production checks, Apple build and group verification.
 Older builds do not understand explicit intent or selected weekdays. Testers
 must update to the new build before evaluating these plans; preserving the old
 RPC signatures and date bounds does not add the new presentation to old clients.
