@@ -71,11 +71,11 @@ navigation therefore remains unverified; the same plan route was exercised by
 native deep links in the sharing pass, and exact payload routing is covered by
 handler tests. No real tester or production push was sent.
 
-Production database/function publication is still awaiting the user's approval.
-Do not distribute a client that reads `push_claimed_at` before migration
-`20260913010000_plan_connection_notifications.sql` and the updated
-`connection-push` function are deployed. The earlier plan-sharing migration and
-invite Worker update remain required as well.
+The user authorized production publication on September 13. Both the plan-sharing
+and notification migrations are live, and `connection-push` version 4 is active
+with JWT verification enabled. Build 28 is approved and available to DCK Club.
+See the [release record](releases/2026-09-13-build-28.md) for verified deployment
+states and the separate pending website copy update.
 
 Relevant official references: [SDK 54 notifications](https://docs.expo.dev/versions/v54.0.0/sdk/notifications/)
 and [Expo push requests and tickets](https://docs.expo.dev/push-notifications/sending-notifications/).
