@@ -211,3 +211,18 @@ A cold development client may display its launcher instead of handling an app
 route. Open `dolorian://expo-development-client/?url=http%3A%2F%2F127.0.0.1%3A8082`
 first, then the test flow in the same Maestro run. Terminate/reopen the app after
 source changes when using `--no-dev`. Native beta builds do not have this launcher.
+
+## New-plan notifications
+
+`plans-notifications.yaml` uses a fresh local fixture and a signed-in native app.
+It creates a connections plan, checks that two recorded `connection-push`
+requests contain the exact plan ID, edits without additional requests, then
+turns plan alerts off and back on across navigation with persisted-value checks.
+The fixture endpoint returns `delivered: 0, qaOnly: true`; it never contacts
+Expo/APNs. The production rules and delivery leasing are tested separately in
+`supabase/tests/plan_notifications.test.sql` and `tests/connection-push.test.ts`.
+
+The iPhone 16e creation/preference flow passed. A synthetic APNs alert appeared,
+but tapping its system card did not complete in the automated driver; the Mac
+was locked when direct computer-use verification was attempted. Do not count
+that as a successful notification-tap test. See `docs/plan-notifications.md`.

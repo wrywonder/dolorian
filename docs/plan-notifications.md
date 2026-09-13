@@ -63,6 +63,14 @@ and a registered device are required.
 - Screenshots: [created plan](qa/plan-notifications/created.png) and
   [notification setting](qa/plan-notifications/setting.png).
 
+A [synthetic APNs notification](qa/plan-notifications/synthetic-alert.png) appeared
+in the iPhone 16e notification center.
+The automated driver's taps did not open the system card. Direct computer-use
+verification was then blocked because the Mac was locked. Actual notification-tap
+navigation therefore remains unverified; the same plan route was exercised by
+native deep links in the sharing pass, and exact payload routing is covered by
+handler tests. No real tester or production push was sent.
+
 Production database/function publication is still awaiting the user's approval.
 Do not distribute a client that reads `push_claimed_at` before migration
 `20260913010000_plan_connection_notifications.sql` and the updated
