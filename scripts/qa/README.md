@@ -179,8 +179,11 @@ or place, and `unavailable` returns a provider failure. The server never fetches
 these URLs. Unknown listings fail rather than producing a success fixture.
 
 `node scripts/qa/test-server.mjs` checks these HTTP fixture contracts on isolated
-loopback port 54330, including v3 persistence, exact invites, sharer identity and
-post-write failure injection. It starts and stops its own server; it does not
+loopback port 54330, including v3 persistence, exact invites, sharer identity,
+null/omitted/empty RSVP notes, local schedule hours and post-write failure
+injection. `TZ=UTC node scripts/qa/test-server.mjs` also verifies that fixture
+timestamps keep their Los Angeles interpretation on a different host. It starts
+and stops its own server; it does not
 touch a running native fixture server on 54329. Set `VILLAGE_QA_TEST_PORT` to use
 another free local port. These checks establish the fixture's behavior, while
 Node schedule tests and the separate SQL harness verify application logic and
