@@ -46,6 +46,15 @@ try {
   const files = (await readdir(resolve(root, 'supabase/tests')))
     .filter((f) => f.endsWith('.test.sql') && (!process.env.SQL_TEST || f === process.env.SQL_TEST)).sort();
   for (const file of files) {
+    if (file === 'api_grants.test.sql') {
+      // This historical RLS runner intentionally retains legacy default grants.
+      // The native runner disables them before migrations and runs every suite.
+      if (process.env.SQL_TEST) {
+        throw new Error('api_grants.test.sql requires: npm --prefix supabase/tests/local test');
+      }
+      console.log('SKIP api_grants.test.sql: legacy defaults; run npm --prefix supabase/tests/local test');
+      continue;
+    }
     try { await db.exec(await readFile(resolve(root, 'supabase/tests', file), 'utf8')); }
     catch (error) { throw new Error(`SQL regression ${file}: ${error.message}`, { cause: error }); }
     console.log(`PASS ${file}`);

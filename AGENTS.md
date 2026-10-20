@@ -201,6 +201,13 @@ unconfigured Supabase client.
 - Match the style of the file you're editing; keep components small and typed.
 - DB changes are new timestamp-prefixed files in `supabase/migrations/` — never
   edit an already-applied migration.
+- New public tables must explicitly grant only the operations their API callers
+  need, alongside RLS and its policies. Supabase removes automatic grants for new
+  tables on October 30, 2026. Preserve column grants and RPC-only mutations; never
+  use blanket `GRANT ALL` or restore schema-wide default grants to fix an access error.
+- Database permissions regression tests run against disposable local PostgreSQL:
+  see `supabase/tests/README.md`. Never run a reset or these fixtures on a linked
+  or hosted project.
 - **Never upload local files via `fetch(uri).blob()` to Supabase Storage** —
   React Native's Blob doesn't serialize correctly and silently uploads
   zero-byte objects (no error). Get base64 from the picker/camera API and
