@@ -53,3 +53,13 @@ Phase goal (definition of done):
 
 ## FYI log (surfaced to Drew at session end, no action needed)
 -
+- 2026-10-20: Explicit API-grants migration prepared for the released
+  `codex/coordination-quality-pass` schema. All 11 SQL suites pass on fresh native
+  PostgreSQL with automatic grants disabled; 10 legacy-default SQL suites and
+  the older PGlite harness pass. Omitting the migration fails as expected.
+  Typecheck and 122 Node tests pass. Review must precede a separately approved
+  application of `20261020000000_explicit_api_grants.sql` to Village project
+  `ymmvdepipjmqlustbdkr`; production was not accessed. The existing profile-save
+  wildcard SELECT/private-phone-column mismatch remains a separate issue.
+  Native login smoke and hosted PostgREST/push delivery are unverified here;
+  this checkout has no lint script.

@@ -104,10 +104,18 @@ PGLITE_PACKAGE=/tmp/village-qa-pg/node_modules/@electric-sql/pglite \
   node scripts/qa/test-database.mjs
 ```
 
-The harness applies every unmodified application migration and all SQL tests. It
-supplies Supabase's platform auth/storage schemas and API role grants. New policy
-tests switch to actual `authenticated`/`anon` PostgreSQL roles. This verifies SQL
-and RLS, not the complete hosted Supabase service or external integrations.
+The harness applies every unmodified application migration and the RLS SQL tests.
+It supplies Supabase's platform auth/storage schemas and legacy API role grants.
+New policy tests switch to actual `authenticated`/`anon` PostgreSQL roles. This
+verifies SQL and RLS, not the complete hosted Supabase service or external integrations.
+
+It skips `api_grants.test.sql`, whose strict assertions require a database created
+without automatic grants. For permissions coverage, run
+`npm --prefix supabase/tests/local ci` then `npm --prefix supabase/tests/local test`.
+That socket-only native PostgreSQL runner executes **all** SQL tests with automatic
+grants disabled; see [the database test guide](../../supabase/tests/README.md).
+Selecting `SQL_TEST=api_grants.test.sql` here fails with that command instead of
+silently skipping the requested test.
 
 `SQL_TEST=file.test.sql` selects one suite; `MIGRATION_CUTOFF=20260819999999`
 reproduces the baseline failures before this pass's privacy migrations.
