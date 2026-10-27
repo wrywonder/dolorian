@@ -1,0 +1,6 @@
+generator/fonts/
+generator/assets/
+generator/out/
+generator/.pkg/
+ds/
+canvas/

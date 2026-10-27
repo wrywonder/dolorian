@@ -26,3 +26,6 @@ supabase/.temp/
 
 # Local launch-film source and rendered media are not part of the app bundle.
 marketing/
+
+# Design proposals and their renders are not part of the app bundle.
+design/
